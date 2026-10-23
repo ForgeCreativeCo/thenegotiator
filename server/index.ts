@@ -9,6 +9,7 @@ import { applyTxAction, contractSignedNote, transactionClientView, type TxAction
 import { createTransaction } from "./transaction/schedule";
 import { askMentor } from "./coach/mentor";
 import { buildDebrief, debriefAvailable } from "./coach/debrief";
+import { buildProgress } from "./coach/progress";
 
 /** The negotiation as the browser sees it, including the transaction once under contract. */
 function viewFor(s: Scenario, n: Negotiation) {
@@ -156,6 +157,27 @@ app.get("/api/scenarios/:id/debrief", async (req, res) => {
     console.error(error);
     res.status(500).json({ error: (error as Error).message });
   }
+});
+
+// ---------- History ----------
+
+app.get("/api/progress", async (_req, res) => {
+  try {
+    res.json(await buildProgress(store.all()));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+app.delete("/api/scenarios/:id", (req, res) => {
+  if (busy.has(req.params.id)) return void res.status(409).json({ error: "That deal is busy. Try again in a moment." });
+  res.json({ deleted: store.delete(req.params.id) });
+});
+
+app.delete("/api/scenarios", (_req, res) => {
+  if (busy.size) return void res.status(409).json({ error: "A deal is busy. Try again in a moment." });
+  res.json({ deleted: store.deleteAll() });
 });
 
 const port = Number(process.env.API_PORT) || 3001;

@@ -186,4 +186,4 @@ The same three columns. The term sheet becomes an **APS summary**: deposit, irre
 4. ~~Ontario conversion~~ (built)
 5. ~~Offer nights~~ (built)
 6. ~~Mentor and debrief, with RECO compliance scoring~~ (built)
-7. Deal history and polish
+7. ~~Deal history and polish~~ (built)

@@ -127,3 +127,22 @@ describe("mentor", () => {
     }
   });
 });
+
+describe("progress", () => {
+  it("scores finished deals and counts unfinished ones without scoring them", async () => {
+    const entries: { scenario: Scenario; negotiation: Negotiation | null }[] = [];
+    for (let seed = 1; seed < 400 && entries.filter((e) => e.negotiation && e.negotiation.status !== "negotiating").length < 3; seed += 41) {
+      const s = scenario("buyer_agent", seed);
+      entries.push({ scenario: s, negotiation: await playBuyerDeal(s) });
+    }
+    entries.push({ scenario: scenario("seller_agent", 5), negotiation: null });
+    const { buildProgress } = await import("../server/coach/progress");
+    const p = await buildProgress(entries);
+    expect(p.deals).toHaveLength(entries.length);
+    expect(p.deals.at(-1)!.status).toBe("not_started");
+    const scored = p.deals.filter((d) => d.scores);
+    expect(scored.length).toBe(p.totals.finished);
+    expect(p.totals.averageOverall).not.toBeNull();
+    expect(p.totals.byRole.buyer_agent.finished).toBe(p.totals.finished);
+  });
+});

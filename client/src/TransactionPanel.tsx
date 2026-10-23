@@ -420,7 +420,7 @@ function Outcome({ view, tx }: { view: UserView; tx: TransactionClientView }) {
             {me === "seller"
               ? `Your sellers' floor was ${money(brief.reservationPrice)}. The final price was ${money(st.price - st.rentalBuyout)}${st.rentalBuyout ? " net of the rental buyout" : ""}${st.creditsOnClosing + st.repairsBySeller ? `, before ${money(st.creditsOnClosing + st.repairsBySeller)} in credits and repairs` : ""}.`
               : `Your buyers' ceiling was ${money(brief.reservationPrice)}. They paid ${money(st.price - st.rentalBuyout - st.creditsOnClosing)} net of credits and the rental buyout.`}{" "}
-            A full debrief of both sides arrives in build step 6.
+            Open the debrief to see both sides and your scores.
           </div>
         </>
       )}

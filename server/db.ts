@@ -63,4 +63,20 @@ export class ScenarioStore {
       return { id: s.id, createdAt: s.createdAt, role: s.userRole, region: s.market.region, municipality: s.property.address.municipality, propertyType: s.property.type, listPrice: s.property.listPrice, status: tx_status === "closed" || tx_status === "terminated" ? tx_status : (status ?? "negotiating") };
     });
   }
+
+  /** Every scenario with its negotiation (if started), oldest first. */
+  all(): { scenario: Scenario; negotiation: Negotiation | null }[] {
+    const rows = this.db.prepare("SELECT s.data AS s, n.data AS n FROM scenarios s LEFT JOIN negotiations n ON n.scenario_id = s.id ORDER BY s.created_at ASC").all() as { s: string; n: string | null }[];
+    return rows.map((r) => ({ scenario: JSON.parse(r.s) as Scenario, negotiation: r.n ? (JSON.parse(r.n) as Negotiation) : null }));
+  }
+
+  delete(id: string): boolean {
+    this.db.prepare("DELETE FROM negotiations WHERE scenario_id = ?").run(id);
+    return this.db.prepare("DELETE FROM scenarios WHERE id = ?").run(id).changes > 0;
+  }
+
+  deleteAll(): number {
+    this.db.exec("DELETE FROM negotiations");
+    return Number(this.db.prepare("DELETE FROM scenarios").run().changes);
+  }
 }

@@ -5,8 +5,9 @@ import type { UserAction } from "../../server/negotiation/engine";
 import type { TxAction } from "../../server/transaction/engine";
 import type { MentorEntry } from "../../server/negotiation/types";
 import type { Debrief } from "../../server/coach/debrief";
+import type { Progress } from "../../server/coach/progress";
 
-export type { UserView, ScenarioSummary, NegotiationView, UserAction, TxAction, MentorEntry, Debrief };
+export type { UserView, ScenarioSummary, NegotiationView, UserAction, TxAction, MentorEntry, Debrief, Progress };
 
 export class ApiError extends Error {
   constructor(
@@ -39,5 +40,8 @@ export const api = {
   mentorLog: (id: string) => request<{ log: MentorEntry[] }>(`/api/scenarios/${id}/mentor`),
   askMentor: (id: string, question: string) => post<{ log: MentorEntry[] }>(`/api/scenarios/${id}/mentor`, { question }),
   debrief: (id: string) => request<{ debrief: Debrief }>(`/api/scenarios/${id}/debrief`),
+  progress: () => request<Progress>("/api/progress"),
+  deleteScenario: (id: string) => request<{ deleted: boolean }>(`/api/scenarios/${id}`, { method: "DELETE" }),
+  deleteAll: () => request<{ deleted: number }>("/api/scenarios", { method: "DELETE" }),
   act: (id: string, action: UserAction) => post<{ negotiation: NegotiationView }>(`/api/scenarios/${id}/negotiation/actions`, action),
 };
