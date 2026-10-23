@@ -290,6 +290,17 @@ export interface AgentPersona {
   publicBio: string;
 }
 
+// ---------- Offer night ----------
+
+/** The listing holds offers until a set review time (common in hot GTA markets). */
+export interface OfferNightSetup {
+  /** Simulated hours after the scenario starts when offers are reviewed (7 p.m. on review day). */
+  reviewAtHours: number;
+  preemptives: "not_accepted" | "considered";
+  /** The seller's direction under TRESA: disclose only how many offers there are, or their contents too. */
+  sellerDisclosure: "count_only" | "details";
+}
+
 // ---------- Scenario ----------
 
 export interface Narrative {
@@ -316,6 +327,8 @@ export interface ScenarioParams {
   buyer: BuyerBrief;
   groundTruth: GroundTruth;
   difficulty: HiddenDifficulty;
+  /** Absent on scenarios created before offer nights existed. */
+  offerNight?: OfferNightSetup | null;
 }
 
 export interface Scenario extends ScenarioParams {

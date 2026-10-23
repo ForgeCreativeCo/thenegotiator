@@ -6,6 +6,7 @@ import { describeTerms } from "../../server/negotiation/terms";
 import { CONDITION_LABELS, money } from "../../server/narrative/format";
 import { OfferForm } from "./OfferForm";
 import { TransactionPanel } from "./TransactionPanel";
+import { OfferNightPanel } from "./OfferNightPanel";
 import { mySide, openOfferFrom, simClock, startingTerms } from "./negotiationUtils";
 
 interface Props {
@@ -137,6 +138,8 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
 
       {negotiation?.transaction ? (
         <TransactionPanel view={view} tx={negotiation.transaction} onChange={onChange} />
+      ) : negotiation?.offerNight && negotiation.offerNight.phase !== "done" && active ? (
+        <OfferNightPanel view={view} negotiation={negotiation} onChange={onChange} />
       ) : active ? (
         <div className="composer">
           <textarea
@@ -179,8 +182,8 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
         </div>
       ) : (
         negotiation && (
-          <div className={`ended ${negotiation.status === "under_contract" ? "ended-deal" : "ended-dead"}`}>
-            {negotiation.status === "under_contract" ? "You're under contract." : "This deal is dead. Generate a new scenario to try again."}
+          <div className={`ended ${negotiation.status === "under_contract" || negotiation.status === "sold_to_other" ? "ended-deal" : "ended-dead"}`}>
+            {{ under_contract: "Accepted.", sold_to_other: "Sold to another buyer on offer night.", lost: "Another buyer won on offer night.", dead: "This deal is dead. Generate a new scenario to try again.", negotiating: "" }[negotiation.status]}
           </div>
         )
       )}
@@ -225,7 +228,7 @@ function OfferCard({ offer, view }: { offer: Offer; view: UserView }) {
 }
 
 function statusLabel(status: Offer["status"]): string {
-  return { open: "On the table", countered: "Countered", accepted: "Accepted", rejected: "Rejected", expired: "Expired" }[status];
+  return { open: "On the table", registered: "Registered (sealed)", countered: "Countered", accepted: "Accepted", rejected: "Not accepted", expired: "Replaced" }[status];
 }
 
 function actionLabel(action: string, isCounter: boolean): string {

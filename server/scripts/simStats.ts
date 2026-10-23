@@ -14,7 +14,7 @@ for (const concession of [0.15, 0.3, 0.6]) {
   let possible = 0, closed = 0, walked = 0;
   for (let i = 0; i < 400; i++) {
     const p = generateParams({ seed: i * 7 + 1, startDate: "2026-10-23" });
-    const s: Scenario = { ...p, id: "x", createdAt: "", narrative: writeOfflineNarrative(p), narrativeSource: "offline" };
+    const s: Scenario = { ...p, offerNight: null, id: "x", createdAt: "", narrative: writeOfflineNarrative(p), narrativeSource: "offline" };
     if (s.difficulty.dealSpace === "none") continue;
     possible++;
     const n = newNegotiation("x");

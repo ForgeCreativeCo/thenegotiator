@@ -3,7 +3,7 @@ import { ScenarioStore } from "./db";
 import { generateScenario, hasClaudeCredentials } from "./scenarioService";
 import { userView } from "./engine/views";
 import type { Scenario } from "./engine/types";
-import { ActionError, applyUserAction, startNegotiation, type UserAction } from "./negotiation/engine";
+import { ActionError, applyUserAction, offerNightView, startNegotiation, type UserAction } from "./negotiation/engine";
 import { negotiationView, newNegotiation, type Negotiation } from "./negotiation/types";
 import { applyTxAction, contractSignedNote, transactionClientView, type TxAction } from "./transaction/engine";
 import { createTransaction } from "./transaction/schedule";
@@ -15,7 +15,7 @@ function viewFor(s: Scenario, n: Negotiation) {
     if (accepted) n.transaction = createTransaction(s, accepted.terms, n.simHours);
   }
   if (n.transaction) contractSignedNote(s, n);
-  return negotiationView(n, n.transaction ? transactionClientView(s, n.transaction) : null);
+  return negotiationView(n, n.transaction ? transactionClientView(s, n.transaction) : null, offerNightView(s, n));
 }
 
 const app = express();

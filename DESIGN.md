@@ -184,6 +184,6 @@ The same three columns. The term sheet becomes an **APS summary**: deposit, irre
 2. ~~Offer and counter negotiation~~ (built; US version)
 3. ~~Contract to closing~~ (built; US version)
 4. ~~Ontario conversion~~ (built)
-5. **Offer nights**: held offers, registration and the count rule, bully offers, offer transparency, improvement rounds
+5. ~~Offer nights~~ (built)
 6. Mentor and debrief, with RECO compliance scoring
 7. Deal history and polish

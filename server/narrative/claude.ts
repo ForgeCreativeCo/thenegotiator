@@ -5,6 +5,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { Narrative, ScenarioParams } from "../engine/types";
 import { findInventedAmounts } from "../engine/validate";
 import { NarrativeSchema } from "./schema";
+import { offerNightWhen } from "./offline";
 import { FINANCING_LABELS, MOTIVATION_LABELS, typeLabel } from "./format";
 
 const MODEL = process.env.SCENARIO_MODEL || "claude-opus-5-5";
@@ -32,6 +33,7 @@ function buildPrompt(p: ScenarioParams): string {
     propertyTypeLabel: typeLabel(p.property.type),
     market: p.market,
     property: p.property,
+    offerNight: p.offerNight ? { offersReviewed: offerNightWhen(p), preemptiveOffers: p.offerNight.preemptives } : null,
     comps: p.comps,
     disclosures: p.disclosures,
     seller: { ...p.seller, motivationDescription: MOTIVATION_LABELS[p.seller.motivation] },

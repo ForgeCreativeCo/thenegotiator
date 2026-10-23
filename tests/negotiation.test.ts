@@ -14,7 +14,8 @@ const SEEDS = Array.from({ length: 400 }, (_, i) => i * 104_729 + 7);
 
 function scenario(seed: number): Scenario {
   const params = generateParams({ seed, startDate: START });
-  return { ...params, id: `s${seed}`, createdAt: START, narrative: writeOfflineNarrative(params), narrativeSource: "offline" };
+  // Offer nights have their own tests; these cover the regular back-and-forth.
+  return { ...params, offerNight: null, id: `s${seed}`, createdAt: START, narrative: writeOfflineNarrative(params), narrativeSource: "offline" };
 }
 
 const offlinePlayer: BotPlayer = async (s, rec, ctx, _history, round) => ({ ...offlineTurn(s, rec, ctx.userTerms, round, ctx.clientUpdate), source: "offline", issues: [] });

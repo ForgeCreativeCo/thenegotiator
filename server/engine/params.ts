@@ -1,6 +1,6 @@
 // Step 1 of scenario generation: code decides every number. The LLM only writes the story around them.
 
-import type { Role, ScenarioParams } from "./types";
+import type { MarketTemperature, OfferNightSetup, Role, ScenarioParams } from "./types";
 import { Rng, newSeed } from "./rng";
 import { generateMarket } from "./markets";
 import { PROPERTY_TYPES, generateProperty, isoDate } from "./properties";
@@ -51,5 +51,17 @@ export function generateParams(options: GenerateOptions = {}): ScenarioParams {
     buyer,
     groundTruth,
     difficulty,
+    offerNight: generateOfferNight(seed, market.offerNightsCommon, market.temperature, groundTruth.competingOffers.filter((o) => o.phase === "pre_contract").length),
+  };
+}
+
+/** Hot GTA-style listings with real competing interest hold offers until a review night. Uses its own random stream. */
+function generateOfferNight(seed: number, common: boolean, temperature: MarketTemperature, competitors: number): OfferNightSetup | null {
+  if (!common || temperature !== "hot" || competitors === 0) return null;
+  const rng = new Rng(seed ^ 0x0ff3e7);
+  return {
+    reviewAtHours: rng.int(2, 5) * 24 + 10,
+    preemptives: rng.chance(0.4) ? "considered" : "not_accepted",
+    sellerDisclosure: rng.chance(0.25) ? "details" : "count_only",
   };
 }

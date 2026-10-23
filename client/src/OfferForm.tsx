@@ -83,7 +83,7 @@ export function OfferForm({ view, initial, isCounter, busy, errors, onSubmit, on
                 const d = days(key);
                 return (
                   <label key={key} className="condition-row">
-                    <input type="checkbox" checked={d !== null} onChange={(e) => setCondition(key, e.target.checked ? (key === "sale_of_property" ? 30 : 5) : null)} />
+                    <input type="checkbox" checked={d !== null} aria-label={`Include ${conditionLabel(key, view.public.property.type).toLowerCase()} condition`} onChange={(e) => setCondition(key, e.target.checked ? (key === "sale_of_property" ? 30 : 5) : null)} />
                     <span>{conditionLabel(key, view.public.property.type)}</span>
                     <input type="number" min={1} max={60} value={d ?? ""} disabled={d === null} onChange={(e) => setCondition(key, Number(e.target.value))} aria-label={`${conditionLabel(key, view.public.property.type)} days`} />
                   </label>

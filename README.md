@@ -4,13 +4,14 @@ Practice negotiating residential real estate deals against a 30-year veteran age
 
 ## Status
 
-**Build steps 1 to 4 are done**, following Ontario practice under TRESA and the RECO Code of Ethics.
+**Build steps 1 to 5 are done**, following Ontario practice under TRESA and the RECO Code of Ethics.
 
 - **Scenarios**: a random Ontario region (GTA weighted heaviest) and market, any residential type (detached, semi, freehold or condo town, condo apartment, duplex/triplex with tenants, cottage, rural acreage, vacant land, new construction, land-lease home, co-op). You're randomly the buyer's agent or the listing agent, with your client's confidential brief.
 - **Negotiation**: offers and sign-backs structured like the OREA Agreement of Purchase and Sale: price, deposit (herewith or upon acceptance), irrevocable time, completion date, Schedule A conditions in banking days, chattels and fixtures, rental items, pre-closing visits. Your own client refuses to sign anything outside their brief. The opposing agent never misrepresents and tells the truth about competing offers.
 - **Acceptance to completion**: conditions must be waived (Form 123) or fulfilled (Form 124) by their deadlines, or the agreement is null and void and the deposit comes back. Repair negotiations happen by Amendment before waiving. Then firm, title requisitions, pre-closing visits, and completion with land transfer tax (Ontario and Toronto, with first-time buyer refunds) and a statement of adjustments. A buyer who can't complete forfeits the deposit and faces a damages claim.
+- **Offer nights**: in hot GTA-style markets with real competing buyers, the listing holds offers until a review night. Buyers register (and learn the true number of competing offers), may try a pre-emptive bully offer if the listing considers them, and the seller can accept, sign back, or send everyone back to improve once. Offer contents are only disclosed on the seller's written direction (TRESA). You can win, lose to another buyer, or, as the listing agent, sell to a competing buyer.
 
-Next: offer nights (step 5), then the mentor and debrief with RECO compliance scoring (step 6).
+Next: the mentor and debrief with RECO compliance scoring (step 6).
 
 ## Setup
 

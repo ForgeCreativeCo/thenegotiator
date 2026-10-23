@@ -281,3 +281,24 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .sev-moderate { background: var(--warn-bg); color: var(--warn-text); }
 .history-status.status-closed { background: var(--accent-soft); color: var(--accent); }
 .history-status.status-terminated { background: var(--error-bg); color: var(--error-text); }
+
+/* ---------- Offer night ---------- */
+.offer-night { display: flex; flex-direction: column; gap: 0.75rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.offer-night-banner { background: var(--warn-bg); color: var(--text); border-radius: 10px; padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.disclosure-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.3rem; }
+.disclosure-row select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.3rem 0.5rem; }
+.offers-table td .row { flex-wrap: wrap; }
+.offers-table button { padding: 0.3rem 0.6rem; }
+.history-status.status-lost { background: var(--error-bg); color: var(--error-text); }
+.history-status.status-sold_to_other { background: var(--accent-soft); color: var(--accent); }
+.conditions-fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.75rem; }
+.conditions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0.35rem 1rem; }
+.condition-row { display: grid; grid-template-columns: auto 1fr 4.5rem; align-items: center; gap: 0.4rem; font-size: 0.86rem; }
+.condition-row input[type="checkbox"] { width: auto; }
+.condition-card { border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.condition-card.due { border-color: var(--warn-text); }
+.conditions-panel { display: flex; flex-direction: column; gap: 0.5rem; }
+.conditions-panel h3 { margin: 0; font-size: 0.9rem; }
+.c-pending { color: var(--warn-text); }
+.c-waived, .c-fulfilled { color: var(--accent); }
+.c-failed { color: var(--error-text); }

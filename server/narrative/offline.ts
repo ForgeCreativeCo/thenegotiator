@@ -19,6 +19,11 @@ function clientNames(rng: Rng): { names: string; plural: boolean } {
   return { names: `${rng.pick(FIRST)} ${last}`, plural: false };
 }
 
+export function offerNightWhen(p: Pick<ScenarioParams, "startDate" | "offerNight">): string {
+  const at = new Date(Date.parse(`${p.startDate}T09:00:00Z`) + (p.offerNight?.reviewAtHours ?? 0) * 3_600_000);
+  return at.toLocaleString("en-CA", { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+}
+
 function article(word: string): string {
   return /^[aeiou8]/i.test(word) || /^1[18]/.test(word) ? "an" : "a";
 }
@@ -69,7 +74,7 @@ export function writeOfflineNarrative(p: ScenarioParams): Narrative {
 
   return {
     listingHeadline: `${specs} ${kind} in ${market.region}`,
-    listingRemarks: `Welcome to ${property.address.street}, ${article(specs)} ${specs} ${kind}${property.yearBuilt ? ` built in ${property.yearBuilt}` : ""}. Highlights include ${property.features.slice(0, 3).join(", ") || "a great location"}. ${fees}Offered at ${money(property.listPrice)}.${market.offerNightsCommon && property.listPrice < p.groundTruth.marketValue ? " Offers reviewed on the date set by the listing brokerage." : ""}`,
+    listingRemarks: `Welcome to ${property.address.street}, ${article(specs)} ${specs} ${kind}${property.yearBuilt ? ` built in ${property.yearBuilt}` : ""}. Highlights include ${property.features.slice(0, 3).join(", ") || "a great location"}. ${fees}Offered at ${money(property.listPrice)}.${p.offerNight ? ` Offers reviewed ${offerNightWhen(p)}; ${p.offerNight.preemptives === "considered" ? "pre-emptive offers considered" : "no pre-emptive offers"}. Register with the listing brokerage.` : ""}`,
     neighborhood: `${market.region.includes(property.address.municipality) ? market.region : `${property.address.municipality} (${market.region})`}, Ontario.`,
     marketSnapshot: `The ${market.region} market is ${market.temperature}: homes average ${market.avgDaysOnMarket} days on market and sell for about ${Math.round(market.listToSaleRatio * 100)}% of the asking price, with ${market.monthsOfInventory} months of inventory.`,
     sellerStory: sellerS,
