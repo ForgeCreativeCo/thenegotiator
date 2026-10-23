@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Scenario } from "../engine/types";
-import { LOAN_LABELS, MOTIVATION_LABELS, money, typeLabel } from "../narrative/format";
+import { FINANCING_LABELS, MOTIVATION_LABELS, money, typeLabel } from "../narrative/format";
 import { TermsSchema, normalizeTerms, termsSummary, type Terms } from "./terms";
 import { botSide, validateBotCounter, type Recommendation } from "./strategy";
 import type { BotTurn } from "./botOffline";
@@ -28,35 +28,48 @@ export function systemPrompt(s: Scenario): string {
 
   const clientNumbers =
     client.side === "seller"
-      ? `- Lowest net price they will sign (price minus seller credits and warranty): ${money(client.reservationPrice)}. NEVER reveal this number or hint how close you are to it.
-- Most they'll give in credits and warranty combined: ${money(client.maxConcessions)}
-- Mortgage payoff: ${money(client.mortgagePayoff)}
-- Closing window: ${client.earliestClose} to ${client.latestClose}, ideally ${client.idealClose}
-- Rent-back needed after closing: ${client.needsRentBackDays ? `${client.needsRentBackDays} days` : "none"}
-- Acceptable financing: ${client.acceptableLoanTypes.map((l) => LOAN_LABELS[l]).join(", ")}
-- Home sale contingency: ${client.acceptsHomeSaleContingency ? "would consider" : "will not accept"}`
-      : `- Highest net price they will sign (price minus seller credits): ${money(client.reservationPrice)}. NEVER reveal this number or hint how close you are to it.
-- Financing: ${client.loanType === "cash" ? "cash" : `${LOAN_LABELS[client.loanType]}, ${client.downPaymentPct}% down, pre-approved to ${money(client.preapprovalAmount ?? 0)}`}
-- Cash reserves: ${money(client.cashReserves)}; could cover an appraisal gap up to ${money(client.maxAppraisalGapCoverage)}
-- Willing to waive: ${client.willingToWaive.length ? client.willingToWaive.join(", ") : "nothing"}
-- Closing window: ${client.earliestClose} to ${client.latestClose}, ideally ${client.idealClose}${client.leaseEndsOn ? `; lease ends ${client.leaseEndsOn}` : ""}
-- Home to sell: ${client.homeToSell ? `${client.homeToSell.status.replace(/_/g, " ")}` : "none"}
+      ? `- Lowest price they will sign (net of any rental buyout they pay): ${money(client.reservationPrice)}. NEVER reveal this number or hint how close you are to it.
+- Mortgage to discharge: ${money(client.mortgagePayoff)}
+- Completion window: ${client.earliestClose} to ${client.latestClose}, ideally ${client.idealClose}${client.boughtElsewhere ? " (they've bought firm elsewhere, so the date matters a lot)" : ""}
+- Minimum deposit: ${client.minDepositPct}% of price
+- Longest condition they'll accept: ${client.maxConditionDays} banking days
+- Condition on the sale of the buyer's property: ${client.acceptsSaleCondition ? "would consider, with an escape clause" : "will not accept"}`
+      : `- Highest price they will sign (net of any rental buyout the seller pays): ${money(client.reservationPrice)}. NEVER reveal this number or hint how close you are to it.
+- Financing: ${client.financing === "cash" ? "cash" : `${FINANCING_LABELS[client.financing]}, ${client.downPaymentPct}% down, pre-approved to ${money(client.preapprovalAmount ?? 0)}`}
+- Cash beyond the down payment and closing costs: ${money(client.cashReserves)}; could cover a low lender appraisal by up to ${money(client.maxAppraisalGapCoverage)}
+- Conditions they'd give up to compete: ${client.willingToWaive.length ? client.willingToWaive.join(", ") : "none; they need their conditions"}
+- Completion window: ${client.earliestClose} to ${client.latestClose}, ideally ${client.idealClose}${client.leaseEndsOn ? `; lease ends ${client.leaseEndsOn}` : ""}
+- Home to sell: ${client.homeToSell ? `${client.homeToSell.status.replace(/_/g, " ")}${client.needsSaleCondition ? "; they need a condition on selling it" : ""}` : "none"}
+- First-time buyer: ${client.firstTimeBuyer ? "yes" : "no"}
 - Must-haves: ${client.mustHaves.join(", ")}`;
 
-  return `You are ${agent.name} of ${agent.brokerage}, a residential real estate agent with ${agent.yearsExperience} years of experience who closes ${agent.dealsPerYear} transactions a year. You represent the ${side} of ${p.address.street}, ${p.address.city}, ${p.address.stateCode}. The other agent, the ${otherRole}, is a person practicing their negotiation skills against you. Play the role fully and realistically; never mention that this is a simulation.
+  const withholding = {
+    open: "You're fairly open about your client's general situation when it helps the deal, without giving away their limits.",
+    reserved: "You share little beyond what the deal needs; you deflect questions about your client's motivation.",
+    guarded: "You give away almost nothing; you answer questions with questions and keep your client's situation close.",
+  }[s.difficulty.withholding];
+
+  return `You are ${agent.name}, a broker registered with RECO at ${agent.brokerage}, with ${agent.yearsExperience} years of experience and ${agent.dealsPerYear} transactions a year. You represent the ${side} of ${p.address.street}, ${p.address.municipality}, Ontario, as your client under TRESA. The other agent, the ${otherRole}, is a person practising their negotiation skills against you. Play the role fully and realistically; never mention that this is a simulation.
 
 YOUR VOICE
 ${agent.voice}
 Phrases you tend to use: ${agent.signaturePhrases.join(" / ")}
-Temperament: ${s.difficulty.temperament}. Bluffing: ${s.difficulty.bluffing === "never" ? "never bluff; you don't imply things that aren't true" : s.difficulty.bluffing === "subtle" ? "you may be vague about other interest or your client's flexibility, but never state a falsehood about a specific written offer" : "you may imply other interest or firmness that isn't real, but never invent a specific written offer with numbers"}.
+Temperament: ${s.difficulty.temperament}. ${withholding}
 
-HOW YOU NEGOTIATE
-- You are protective of your client and you know the business cold. Justify numbers with the comps and market data.
-- Trade terms, don't just split prices: closing dates, rent-backs, credits, contingency lengths, inclusions.
-- Probe for what the other side's client really needs. Use anything they reveal.
-- Keep messages short and natural, like a real call or text between agents: usually 2-5 sentences. No markdown, no bullet lists.
-- Each turn you receive a private note from your own deal analysis with the move it recommends and hard limits. You may choose a different action or adjust terms, but you MUST stay inside the limits; violations are rejected and you'll have to redo the turn.
-- When you counter, "terms" must contain the complete counteroffer (every field), and your message must match those terms exactly. Use specialTerms keys exactly as listed under property-specific terms.
+ETHICS (RECO Code of Ethics; never break these)
+- Never misrepresent anything: no phantom offers, no invented interest, no false statements about the property, the market, or your client's position. Hardball means firm, not dishonest.
+- Keep your client's confidential information confidential: their motivation, deadlines, and limits.
+- If asked whether there are other offers, answer truthfully using only the facts in your private notes. If there are competing written offers, you may say how many there are.
+- Don't hide a known latent defect that makes the property dangerous. You don't have to volunteer every repair.
+- Don't give legal advice; refer questions about the agreement's legal effect to the lawyers.
+
+HOW YOU NEGOTIATE (ONTARIO PRACTICE)
+- Offers and sign-backs follow the OREA Agreement of Purchase and Sale: price, deposit (herewith or upon acceptance, held in the listing brokerage's trust account), irrevocable time, completion date, Schedule A conditions in banking days, chattels and fixtures, rental items, pre-closing visits.
+- Trade terms, don't just split prices: completion dates, condition lengths, deposit size, irrevocable time, chattels, who pays out rental items.
+- Probe for what the other side's client really needs, and use anything they reveal.
+- Keep messages short and natural, like a real call or text between agents: usually 2-5 sentences. No markdown, no bullet lists. Canadian spelling.
+- Each turn you get a private note with the move your deal analysis recommends and hard limits. You may choose differently, but you MUST stay inside the limits; anything outside them is rejected and you'll redo the turn.
+- When you sign back (counter), "terms" must contain the complete agreement (every field), and your message must match those terms exactly. Use specialTerms keys exactly as listed under property-specific terms.
 - When you accept, you accept the other side's latest offer exactly as written; set terms to null.
 
 YOUR CLIENT (confidential)
@@ -69,12 +82,12 @@ Soft spots: ${story.softSpots.join("; ")}
 Quirks: ${story.quirks.join("; ")}
 
 THE PROPERTY (public)
-${typeLabel(p.type)}. ${p.type === "land" ? `${p.lotAcres} acres` : `${p.beds} bed, ${p.baths} bath, ${p.sqft} sq ft, built ${p.yearBuilt}`}. Listed at ${money(p.listPrice)} (originally ${money(p.originalListPrice)}), ${p.daysOnMarket} days on market.
+${typeLabel(p.type)}, ${p.style}. ${p.type === "vacant_land" ? `${p.acres} acres` : `${p.beds} bed, ${p.baths} bath, about ${p.sqft} sq ft, built ${p.yearBuilt}`}. Listed at ${money(p.listPrice)} (originally ${money(p.originalListPrice)}), ${p.daysOnMarket} days on market. Taxes ${money(p.annualTaxes)}/year.${p.condo ? ` Condo fees ${money(p.condo.monthlyFees)}/month (${p.condo.corporation}).` : ""}
+Rental items: ${p.rentalItems.length ? p.rentalItems.map((r) => `${r.item} at ${money(r.monthly)}/month (buyout about ${money(r.buyoutCost)})`).join("; ") : "none"}
 Listing remarks: ${s.narrative.listingRemarks}
 Comps: ${s.comps.map((c) => `${c.address} sold ${c.soldDate} for ${money(c.soldPrice)} (${c.sqft} sq ft, ${c.notes})`).join("; ")}
 Disclosures: ${s.disclosures.map((d) => `${d.item}: ${d.detail}`).join("; ")}
-Market: ${s.market.temperature}, ${s.market.avgDaysOnMarket} average days on market, ${Math.round(s.market.listToSaleRatio * 1000) / 10}% sale-to-list, ${s.market.monthsOfInventory} months of inventory, rates around ${s.market.mortgageRate}%. ${s.narrative.marketSnapshot}
-Local customs: closings by ${s.market.customs.closing.replace("_", " ")}; ${s.market.customs.optionPeriod ? "a paid option period is customary instead of an inspection contingency; " : ""}typical earnest money ${s.market.customs.typicalEarnestMoneyPct}%.
+Market: ${s.market.region}, ${s.market.temperature}, ${s.market.avgDaysOnMarket} average days on market, ${Math.round(s.market.listToSaleRatio * 1000) / 10}% sale-to-list, ${s.market.monthsOfInventory} months of inventory, 5-year fixed rates around ${s.market.mortgageRate}%. Typical deposit ${s.market.typicalDepositPct}%. ${s.narrative.marketSnapshot}
 Property-specific terms: ${s.typeSpecificTerms.length ? s.typeSpecificTerms.map((t) => `${t.key} (${t.label}: ${t.description})`).join("; ") : "none"}`;
 }
 
@@ -84,6 +97,8 @@ export interface TurnContext {
   simTime: string;
   newEvents: string[];
   clientUpdate: string | null;
+  /** Real competing written offers the listing side has received, or null when the bot is the buyer's agent and can't know. */
+  competingOffers: number | null;
 }
 
 function turnPrompt(s: Scenario, rec: Recommendation, ctx: TurnContext): string {
@@ -93,6 +108,7 @@ function turnPrompt(s: Scenario, rec: Recommendation, ctx: TurnContext): string 
   const privateNotes: string[] = [];
   for (const e of ctx.newEvents) privateNotes.push(e);
   if (ctx.clientUpdate) privateNotes.push(`Your client just told you: ${ctx.clientUpdate} Bring this up naturally.`);
+  if (ctx.competingOffers !== null) privateNotes.push(ctx.competingOffers > 0 ? `Your seller has ${ctx.competingOffers} other written offer${ctx.competingOffers > 1 ? "s" : ""} in hand. You may say so truthfully if it helps.` : "There are no other offers. Never suggest or imply that there are.");
   privateNotes.push(`Recommended move: ${rec.action}. ${rec.reasoning}`);
   if (rec.terms) privateNotes.push(`Recommended terms: ${termsSummary(rec.terms, s)}`);
   privateNotes.push(`Your current price: ${money(rec.currentPrice)} (net ${money(rec.currentNet)}). Your client's limit (net): ${money(rec.reservationNet)}. Most you may concede this turn: ${money(rec.maxConcession)}.`);

@@ -1,16 +1,20 @@
-# The Negotiator: Design Draft
+# The Negotiator: Design
 
-A practice tool for negotiating residential real estate deals with an AI opposing agent: a 30-year veteran who closes 30 to 40 transactions a year. Each deal runs from first offer through closing (or until it falls apart).
+A practice tool for negotiating **Ontario** residential real estate deals with an AI opposing agent: a RECO-registered broker with 30 years of experience who closes 30 to 40 transactions a year. Each deal runs from first offer through completion (or until it falls apart).
+
+> **Jurisdiction.** Everything follows Ontario practice under the *Trust in Real Estate Services Act, 2002* (TRESA) and the RECO Code of Ethics, using the structure of the standard OREA forms. Clause wording in the app is written in plain language, not copied from OREA forms (they're copyrighted). This is a training simulation, not legal advice; rules are simplified where noted.
 
 ## Decisions so far
 
 | Topic | Decision |
 |---|---|
-| Scope | From offer through **closing**. Contingencies can turn up issues, be waived, or cause the deal to fall through. |
-| Markets | Random: hot, balanced, cold; urban, suburban, rural; low to high price ranges. |
-| Property types | All residential (see below). |
-| Offer format | Free chat **plus** a structured offer/counter form that updates the term sheet. |
-| Coaching | A mentor you can ask during the deal, **plus** a debrief at the end. |
+| Jurisdiction | **Ontario only.** All US concepts (escrow, title companies, appraisal contingencies, state customs) are removed. |
+| Scope | From offer through **completion**. Conditions can turn up issues, be waived, be fulfilled, or make the deal null and void. |
+| Markets | Mixed Ontario regions (GTA weighted heaviest), random market temperature, prices in CAD. |
+| Property types | All Ontario residential types (see below). |
+| Offer format | Free chat **plus** a structured offer and sign-back form modelled on the OREA Agreement of Purchase and Sale. |
+| Offer nights | **Included**: held offers, registered offers, bully offers, sign-backs, and improvement rounds. |
+| Coaching | A mentor during the deal, **plus** a debrief at the end that also grades **RECO compliance**. |
 | Difficulty | Random mix, **not shown** until the debrief. |
 | Users | Single user, running locally. |
 
@@ -20,179 +24,166 @@ A practice tool for negotiating residential real estate deals with an AI opposin
 
 | Layer | Who sees it | Purpose |
 |---|---|---|
-| **Public** | Both agents | Listing, MLS data, comps, disclosures, market stats |
-| **Your client's brief** | You (and your mentor) | Motivations, limits, deadlines, quirks |
+| **Public** | Both agents | MLS listing, comps, Seller Property Information Statement (if the seller provided one), market stats, offer-night instructions |
+| **Your client's brief** | You (and your mentor) | Motivations, limits, dates, quirks |
 | **Bot's client's brief** | Bot only | The same for the other side |
-| **Ground truth** | Nobody, until events reveal it | The house's real condition, the real appraised value, the buyer's real loan risk, title problems |
+| **Ground truth** | Nobody, until events reveal it | The property's real condition, the lender's appraisal, the buyer's real mortgage risk, title problems, real competing offers |
 
-Ground truth is decided **when the scenario is generated**. That makes the inspection, appraisal and underwriting outcomes fixed facts that you discover, not dice rolled to punish you. Waiving the inspection doesn't make the bad roof go away; it just means you find out at closing, or after.
+Ground truth is fixed when the scenario is generated. A firm offer doesn't make the knob-and-tube wiring go away; it means your buyer owns it.
 
-All four layers are revealed in the debrief.
+The scenario assumes the paperwork before the first offer is done: your client has the **RECO Information Guide**, and you have a signed **Buyer Representation Agreement** or **Listing Agreement**. You and the opposing agent are at different brokerages, so there's no multiple representation.
 
-## 2. Scenario generation
+## 2. Ontario markets
 
-The work is split so the numbers always add up:
+Regions with benchmark prices (CAD, illustrative for 2026) and local character. A region's weight sets how often it comes up.
 
-1. **Code sets the parameters.** Market temperature, property type, price, client motivations, reservation values (each side's walk-away numbers), difficulty settings and ground truth.
-2. **The LLM writes the story.** It turns those parameters into a listing description, client backstories, the agent's voice, the inspection report, and so on.
-3. **Code checks the story** against the parameters (for example, that the briefs make a deal possible, or deliberately make one barely possible).
+| Region | Weight | Benchmark detached | Notes |
+|---|---|---|---|
+| Toronto | High | ~$1.4M | Municipal land transfer tax on top of the provincial tax; offer nights are common; condo-heavy |
+| Mississauga, Brampton, Oakville, Vaughan, Markham, Richmond Hill | High | $1.0M–1.5M | 905 suburbs; semis and freehold towns are common |
+| Durham (Oshawa, Whitby, Ajax, Pickering) | Medium | ~$850k | Commuter market; lots of new construction |
+| Hamilton, Burlington | Medium | $800k–1.1M | Older housing stock (knob-and-tube, lead water service pipes) |
+| Kitchener-Waterloo, Cambridge, Guelph | Medium | $750k–850k | Student rentals and duplexes |
+| Ottawa | Medium | ~$700k | Its own market rhythm; government buyers |
+| London, Windsor, Niagara (St. Catharines, Welland) | Medium | $550k–650k | More balanced markets |
+| Barrie, Orillia, Collingwood | Low | $800k–900k | Commuter and recreational mix |
+| Kingston, Peterborough, Belleville, Prince Edward County | Low | $600k–750k | Rural edges and waterfront |
+| Muskoka, Haliburton, the Kawarthas (cottage country) | Low | ~$1.0M | Waterfront, septic, wells, seasonal roads, shore road allowances |
+| Sudbury, Thunder Bay, Sault Ste. Marie, North Bay | Low | $300k–450k | Cold markets, large lots, rural services |
 
-### Property types and the extra terms each brings
+Market temperature (hot, balanced, cold) is drawn at random, as now, and sets days on market, sale-to-list ratio, inventory, and how often offers are held for an offer night.
 
-| Type | Extra terms and contingencies |
+## 3. Property types
+
+| Type | Ontario-specific terms and risks |
 |---|---|
-| Single-family | Baseline |
-| Condo | HOA document review, special assessments, reserve study, FHA approval of the building |
-| Townhouse | HOA documents, shared walls and roof responsibility |
-| Co-op | Board approval, financial disclosure, flip tax |
-| Multifamily (2–4 units) | Rent rolls, leases, estoppels, tenant deposits, rental income for qualifying |
-| Manufactured or mobile home | Real property vs. personal property titling, foundation certification, lot rent |
-| New construction | Builder addenda, upgrades, completion date slip, builder incentives tied to the builder's lender |
-| Rural or acreage | Well and septic inspections, survey, easements, USDA loan |
-| Land or lot | Perc test, zoning, utilities access, survey |
+| Detached | Baseline. Older homes: knob-and-tube or aluminum wiring (insurance), galvanized pipes, lead water service, UFFI, underground oil tank, vermiculite |
+| **Semi-detached** | Shared wall; party-wall maintenance; some older semis share a drain or a mutual driveway (right-of-way) |
+| Freehold townhouse | Sometimes a common elements condominium (POTL) with monthly fees |
+| Condo townhouse | **Status certificate**, maintenance fees, exclusive-use areas |
+| Condo apartment | **Status certificate** (special assessments, reserve fund, lawsuits, rules on pets and short-term rentals), parking and locker (owned or exclusive use), **Kitec plumbing** in 1995–2007 buildings |
+| Duplex or triplex | Leases and tenants under the *Residential Tenancies Act*: the buyer must take on the tenancies, and only a purchaser who will live there can give notice to end one (Form N12). Legal versus non-conforming units; fire code retrofit |
+| Cottage or waterfront | Well (water potability and flow), septic, seasonal or private road, shore road allowance, conservation authority permits, wood stove (WETT inspection) |
+| Rural acreage or farm | Well, septic, severance rules, zoning, outbuildings |
+| Vacant land | Zoning, severance, septic permit feasibility, utilities, conservation authority |
+| New construction (freehold) | Builder's agreement, **Tarion** warranty, firm and tentative closing dates with **delayed-closing compensation**, HST included in price with the new-housing rebate assigned to the builder |
+| Mobile home in a land-lease community | Monthly land lease fee, park approval of the buyer, financing is harder |
+| Co-op apartment (rare, Toronto only) | Board approval, share purchase rather than land, limited financing |
 
-### What a scenario contains (simplified)
+## 4. The offer: Agreement of Purchase and Sale
 
-```ts
-Scenario {
-  id, seed, createdAt
-  market:     { region, temperature, avgDOM, listToSaleRatio, rates, customs }  // customs: attorney state? option period? escrow vs. table closing
-  property:   { type, address, specs, yearBuilt, condition, listPrice, dom, priceHistory, disclosures, hoa?, units? }
-  comps:      Comp[]
-  userRole:   "buyer_agent" | "seller_agent"
-  briefs: {
-    seller:   ClientBrief   // only one of these is ever sent to the browser before the debrief
-    buyer:    ClientBrief
-  }
-  groundTruth: {
-    inspectionFindings: Finding[]      // severity, repair cost range, was it disclosed?
-    appraisedValue: number
-    financing: { riskEvents: LoanEvent[] }   // e.g. job change, debt-to-income creep, rate lock expiring
-    titleIssues: TitleIssue[]
-    walkthroughSurprises: Surprise[]
-    competingOffers: OfferTiming[]     // whether, when, and how strong
-  }
-  difficulty: HiddenDifficulty         // see section 5
-}
+Offers and sign-backs use the structure of OREA **Form 100** (Form 101 for condos), with Schedule A for conditions and extra clauses:
 
-ClientBrief {
-  names, backstory, motivation, urgency
-  reservation: { price, latestClose, earliestClose, maxConcession, ... }   // walk-away numbers, enforced in code
-  preferences: weights over price, timing, certainty, repairs, possession
-  nonNegotiables, softSpots, personalityQuirks
-  finances?: { preapproval, loanType, downPct, cashReserves, homeToSell? }  // buyer side
-  payoff?:   { mortgageBalance, netNeeded }                               // seller side
-}
-```
+- **Price** and **deposit**: the deposit is paid "upon acceptance" (within 24 hours) or "herewith". It's held in the **listing brokerage's trust account**. Typical: 5% in the GTA; 2–5% or a fixed amount elsewhere.
+- **Irrevocable** date and time: the offer is open until then. A sign-back carries its own irrevocable time.
+- **Completion date**, usually 30–90 days out. Possession is on completion.
+- **Requisition date** for title searches.
+- **Chattels included**, **fixtures excluded**, and **rental items** (hot water tank, furnace or water softener rentals the buyer assumes).
+- **HST**: "included in the price, if applicable" (relevant for new construction).
+- **Conditions** in Schedule A, each with a deadline (typically 5 banking days):
+  - Financing (covers the lender's appraisal)
+  - Home inspection
+  - Status certificate review (condos)
+  - Lawyer's review
+  - Insurance
+  - Sale of the buyer's property, with a **72-hour escape clause**
+  - Water and septic inspections (rural)
+- **Pre-closing visits**: typically 2 or 3 visits before completion.
+- **Seller's repairs** before completion, if negotiated.
 
-## 3. Deal lifecycle (through closing)
+**How a sign-back works:** the other side changes terms on your offer and initials, or writes a new offer, and returns it with a new irrevocable time. When the irrevocable time passes without acceptance, the offer is dead.
 
-There's a **simulated calendar**. Every contingency has a deadline. You move time forward ("Advance to the next deadline", or "Advance 1 day"), and events fire when their dates arrive.
+**Seller credits and home warranties** (US practice) are removed. In Ontario the money usually moves through the price, either up front or in an Amendment. A "credit on closing" is possible but lenders must approve it.
 
-```
-LISTING ─► OFFER/COUNTER ─► UNDER CONTRACT
-                                │  earnest money due
-                                ▼
-                     INSPECTION / DUE DILIGENCE ──► buyer terminates? ─► DEAD (earnest money returned)
-                                │  repair request / credit / price cut negotiation
-                                ▼
-                     HOA / CONDO DOCS, RENT ROLLS, SURVEY (type-specific)
-                                ▼
-                     APPRAISAL ──► low? ─► gap negotiation (cut / cover / split / terminate)
-                                ▼
-                     FINANCING ──► underwriting conditions, rate lock, loan denial
-                                ▼
-                     HOME-SALE CONTINGENCY (if any) ──► kick-out clause if another offer comes in
-                                ▼
-                     TITLE ──► liens, probate, boundary issues
-                                ▼
-                     FINAL WALKTHROUGH ──► damage, missing items, repairs not done
-                                ▼
-                     CLOSING ──► close, or extend, or default
-```
+## 5. Offer nights (multiple offers)
 
-- **Waived contingencies have real consequences.** If the buyer waived the appraisal contingency and the appraisal comes in low, the buyer must cover the gap or default and risk the earnest money.
-- **Amendments:** any change after contract goes through the same offer/counter process as a formal amendment.
-- **Missed deadlines:** if a deadline passes without action, the contract's default terms apply (for example, the contingency is deemed waived).
-- **Termination** rules follow which contingency was used and whether it was timely. Earnest money disputes are possible.
+Common in hot markets and in Toronto especially. Ground truth decides whether competing offers are real, how many there are, and how strong.
 
-## 4. The opposing agent (the bot)
+- **The listing says offers are held**, for example "Offers reviewed Tuesday at 7 PM; no pre-emptive offers" or "pre-emptive offers welcome".
+- **Registered offers.** A buyer's agent registers an offer. Under the Code of Ethics, the listing brokerage must tell every party with a competing written offer **how many competing offers there are**, and that number is always true.
+- **Bully offers.** A buyer submits early with a short irrevocable time and pressures the seller to decide before offer night.
+- **Offer transparency (TRESA).** The seller may direct the listing brokerage to disclose the contents of competing offers. Without that direction, the details stay confidential.
+- **The seller's options on offer night:** accept one offer, sign back one, or **send all of them back to improve**. Then there's a second round with a new deadline.
+- **When you represent the buyer**, you compete against hidden real offers. You learn only the count, whatever the seller chooses to disclose, and whether you won.
+- **When you represent the seller**, you run offer night: you receive the bot buyer's offer and the competing offers, choose disclosure (with your seller's direction), and decide.
 
-### Persona
-Thirty years in the business, 30 to 40 closings a year. Calm, direct, a bit folksy, and protective of their client. They know every trick but stay ethical. They run their side like a professional:
-- Anchor early and justify numbers with comps.
-- Rarely move first and rarely split the difference evenly.
-- "Let me run that by my sellers." Some responses come back after a simulated delay.
-- Trade terms: "We can do your price if you can close in 21 days."
-- Try to find out what your client wants ("Is your buyer flexible on closing?") and **use anything your side leaks**.
-- Make deadlines feel real, and in a hot market mention other interest when there is some. They bluff only if the hidden difficulty allows it, and never invent a written offer.
+The brokerage must keep copies of all written offers, which is the safeguard against phantom offers. The opposing agent **never invents an offer**.
 
-### Guardrails enforced in code
-Every bot turn returns structured output:
-```ts
-{ message: string, action: "counter" | "accept" | "reject" | "walk" | "request_info" | "hold", terms?: Terms, internalNote: string }
-```
-The server scores `terms` against the bot's client utility function:
-- The bot **cannot accept or propose** a deal below its client's reservation value. If it tries, the turn is regenerated.
-- Its concessions are capped per round by its difficulty profile, so it can't be talked off a cliff.
-- `internalNote` (its private reasoning) is kept and shown in the debrief: "Here's what I was thinking."
+## 6. After acceptance: conditional, firm, completion
 
-### Your client pushes back too
-If you agree to terms outside your own client's brief, **your client may refuse to sign**, or sign reluctantly, which costs you points. You're representing someone, not just trying to close.
-
-## 5. Hidden difficulty
-
-These are drawn at random for each scenario and revealed only in the debrief:
-
-| Setting | Easy end | Hard end |
-|---|---|---|
-| Leverage | The bot's client is desperate | Your client is desperate, the bot's isn't |
-| Agent temperament | Collaborative, reveals information | Cagey, anchors hard, uses deadlines strategically |
-| Concession pace | Moves in generous steps | Moves in tiny steps, or not at all, on some terms |
-| Bluffing | Never | Implies other interest that may or may not exist |
-| Client volatility | Steady | The bot's client changes their mind and adds a demand late |
-| Event volatility | A clean house and smooth loan | Several ground-truth problems, a low appraisal, underwriting trouble |
-| Deal space | Wide gap between the two sides' limits | Very narrow, or **no deal possible at all** (recognizing that and walking away is the right answer) |
-
-## 6. Mentor and debrief
-
-**Mentor (at any time):** a separate persona that sees only what you see: the public layer, your brief and the transcript. It cannot leak the other side's brief. Ask it things like "What's my next move?", "Is this counter reasonable?" or "Should we waive appraisal?"
-
-**Debrief (when the deal closes or dies):**
-- All four layers revealed, plus the bot's internal notes for each turn
-- **Outcome score:** your client's result compared with the range of deals that were possible
-- **Process score:** information you protected or leaked, deadlines met, how you used contingencies, professionalism
-- **Veteran's critique:** three things you did well, three things to fix, and a key moment where you could have gained more
-- A history of past deals so you can track progress
-
-## 7. Interface (desktop layout)
+There's a simulated calendar, and condition deadlines count **banking days** (weekends skipped). You move time forward.
 
 ```
-┌──────────────────────┬─────────────────────────────┬─────────────────────────┐
-│ DEAL FILE            │ NEGOTIATION                 │ TERM SHEET              │
-│ • Listing & photos*  │ chat with the opposing agent│ current terms (diff hl) │
-│ • Comps              │                             │ ─────────────────────── │
-│ • Disclosures        │ [Make offer / counter] form │ CALENDAR                │
-│ • YOUR CLIENT BRIEF  │ [Ask mentor]                │ deadlines, today marker │
-│ • Reports (insp, …)  │                             │ [Advance to next date]  │
-└──────────────────────┴─────────────────────────────┴─────────────────────────┘
+ACCEPTED (conditional) ─► deposit due within 24 hours
+        │
+        ├─ Financing: lender's appraisal; mortgage approval or decline
+        ├─ Home inspection: report from ground truth; renegotiation by Amendment
+        ├─ Status certificate: special assessments, reserve fund, lawsuits
+        ├─ Lawyer's review, insurance (e.g. knob-and-tube or an oil tank makes insurance hard)
+        ├─ Sale of the buyer's property: 72-hour escape clause if the seller gets another offer
+        │
+        │  Each condition must be WAIVED or FULFILLED (Waiver Form 123 / Notice of Fulfilment Form 124)
+        │  by its deadline, or the agreement is NULL AND VOID and the deposit is returned in full.
+        ▼
+FIRM ─► requisition date: buyer's lawyer searches title; seller must answer valid objections
+        │   (if the seller can't fix a valid objection and the buyer won't waive it, the deal ends and the deposit is returned)
+        ├─ pre-closing visits (damage, missing chattels, rental items)
+        ├─ Amendments (Form 120) for any change: price, completion date, repairs
+        ▼
+COMPLETION ─► lawyers exchange funds and documents electronically; buyer pays land transfer tax;
+              statement of adjustments (property tax, condo fees, rental items); keys released
 ```
-\*Photos: probably text descriptions in v1. Generated images are possible later.
 
-## 8. Tech stack
+The big change from the US version: **if the buyer does nothing by a condition's deadline, the deal ends and the deposit comes back.** Doing nothing protects the buyer, so the pressure falls on the **seller** to get waivers on time, and on the buyer to waive only when they're truly ready.
 
-- **Frontend:** Vite + React + TypeScript
-- **Backend:** Node + TypeScript (Express or Fastify). It holds all hidden layers and calls the Claude API. The browser only ever receives what your role is allowed to see.
-- **Storage:** SQLite (via `better-sqlite3`) for scenarios, transcripts and debriefs
-- **LLM:** the Claude API, with an Anthropic API key in a local `.env`. A stronger model writes scenarios and debriefs; the bot's turns may use a faster model to keep the conversation quick (to be decided).
-- **Engine:** the state machine, calendar, utility scoring and event firing live in plain TypeScript, so they can be tested without the LLM.
+**Renegotiating after inspection:** the buyer can't waive the inspection condition and come back for more later, so any repair negotiation happens *before* the waiver, by Amendment: a price reduction, seller repairs before completion, or occasionally a credit on closing that the lender approves.
 
-## 9. Build order
+**Low appraisal:** this sits inside the financing condition. If the buyer is still conditional, they can renegotiate or let the deal die. If they're firm, they must make up the difference.
 
-1. Scenario engine: parameters and ground truth, LLM story writing, and the endpoint for "your view"
-2. Offer/counter negotiation: chat, form, term sheet, bot guardrails and acceptance
-3. Under contract: calendar, deadlines, inspection phase
-4. Appraisal, financing, title, walkthrough, closing, and how each one can fail
-5. Type-specific branches: condo and HOA, multifamily, new construction, land and rural
-6. Mentor and debrief, with scoring
+**Defaults:** a buyer who can't complete **forfeits the deposit, and the seller can sue for damages** if the property resells for less. The debrief shows the buyer's exposure. A seller who can't complete returns the deposit and may face a damages claim too.
+
+**New construction:** Tarion delayed-closing rules apply. The builder can set a new tentative or firm date with proper notice and pays compensation for delays. New condos bought from a builder have a **10-day cooling-off period**, but this simulation uses freehold builder inventory, so it doesn't come up.
+
+## 7. Costs and the settlement summary
+
+- **Land transfer tax (buyer).** Ontario brackets: 0.5% up to $55k, 1% to $250k, 1.5% to $400k, 2% to $2M, 2.5% above $2M (for homes with one or two single-family residences). First-time buyers get a refund of up to $4,000. **Toronto's municipal tax** follows the same brackets with higher luxury brackets above $3M; first-time buyers get a refund of up to $4,475.
+- **Mortgage.** CMHC insurance is required with less than 20% down, and is available only on homes under $1.5M. Buyers qualify under the stress test, and first-time buyers and new builds can get a 30-year amortization.
+- **Statement of adjustments:** property taxes, condo fees and prepaid utilities, prorated to completion.
+- **Seller's side:** mortgage discharge and penalty. Commissions aren't shown; they're outside the negotiation.
+
+## 8. The opposing agent (the bot)
+
+A RECO-registered broker with 30 years of experience and 30 to 40 deals a year, at a fictional brokerage. The persona, guardrails and hard limits work the same as before, plus these **Code of Ethics constraints**:
+
+- **Never misrepresents**: no phantom offers, no false statements about the property or other offers. "Hardball" means firm and terse, never dishonest. The old "bluffing" setting becomes how much the agent **withholds**, which is allowed: it can stay vague about its client's flexibility.
+- **Never discloses its client's confidential information** (motivation, bottom line) without direction.
+- **Tells you the true number of competing offers** on offer night.
+- **Discloses material facts it knows about the property.** If its seller knows about a latent defect that makes the property dangerous, the agent won't hide it, but it won't volunteer every repair either.
+
+## 9. Mentor, debrief and RECO compliance
+
+**Mentor:** the same as before, with Ontario-specific coaching. For example: "Don't waive financing until you have the commitment in writing, including the appraisal."
+
+**Debrief:** reveals all four layers and the bot's reasoning, then scores you on:
+- **Outcome**: your client's result compared with the range of possible deals
+- **Process**: deadlines, conditions, how you handled offer night
+- **RECO compliance**, flagged from your messages and actions:
+  - Disclosing your client's confidential information (bottom line, motivation, other offers) without direction
+  - Misrepresenting facts: claiming offers that don't exist, or misstating the property or market
+  - Failing to tell your seller about every offer, or the count rule on offer night
+  - Pushing your client past their instructions; your client already refuses to sign, but trying it gets noted
+  - Advising outside your expertise (for example, legal advice instead of "talk to your lawyer")
+
+## 10. Interface
+
+The same three columns. The term sheet becomes an **APS summary**: deposit, irrevocable time, completion date, conditions with deadlines, chattels and fixtures, rental items. The calendar shows condition deadlines in banking days, the requisition date, pre-closing visits, and completion.
+
+## 11. Build order
+
+1. ~~Scenario engine~~ (built; US version)
+2. ~~Offer and counter negotiation~~ (built; US version)
+3. ~~Contract to closing~~ (built; US version)
+4. ~~Ontario conversion~~ (built)
+5. **Offer nights**: held offers, registration and the count rule, bully offers, offer transparency, improvement rounds
+6. Mentor and debrief, with RECO compliance scoring
 7. Deal history and polish

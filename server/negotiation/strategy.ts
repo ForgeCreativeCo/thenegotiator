@@ -3,8 +3,9 @@
 
 import type { HiddenDifficulty, Scenario, Side } from "../engine/types";
 import { Rng, roundPrice } from "../engine/rng";
+import { isCondo } from "../engine/properties";
 import { defaultBuyerTerms, type Terms } from "./terms";
-import { netFor, priceForNet, repairTerms, setNet, violations } from "./constraints";
+import { netFor, setNet, violations } from "./constraints";
 import type { BotAction, Negotiation, Offer } from "./types";
 
 export function botSide(s: Scenario): Side {
@@ -85,11 +86,17 @@ export interface Recommendation {
 export function openingOffer(s: Scenario): Terms {
   const rng = new Rng(s.seed ^ 0x51ed);
   const net = aspiration(s);
-  let terms = defaultBuyerTerms(s, { closingDate: s.buyer.idealClose });
-  if (s.market.temperature === "cold" && rng.chance(0.6)) terms.sellerCredit = roundPrice(net * 0.015);
-  if (s.market.temperature === "hot" && s.buyer.willingToWaive.includes("appraisal")) {
-    terms.appraisal = "gap_coverage";
-    terms.appraisalGapCoverage = s.buyer.maxAppraisalGapCoverage;
+  const terms = defaultBuyerTerms(s, { completionDate: s.buyer.idealClose });
+  if (s.market.temperature === "hot") {
+    // Competitive Ontario offers: drop what the buyer will waive, shorten the rest, strong deposit herewith.
+    terms.conditions = terms.conditions.filter((c) => !(s.buyer.willingToWaive as string[]).includes(c.key)).map((c) => ({ ...c, days: c.key === "sale_of_property" ? c.days : 3 }));
+    terms.deposit = roundPrice((net * Math.max(5, s.market.typicalDepositPct)) / 100);
+    terms.depositTiming = "herewith";
+    terms.irrevocableHours = 12;
+  } else if (s.market.temperature === "cold") {
+    terms.conditions = terms.conditions.map((c) => ({ ...c, days: c.key === "sale_of_property" ? c.days : 7 }));
+    if (s.property.rentalItems.length && rng.chance(0.6)) terms.rentalItemsBuyout = true;
+    if (isCondo(s.property.type) || rng.chance(0.3)) terms.conditions.push({ key: "lawyer_review", days: 3 });
   }
   return setNet("buyer", s, terms, net);
 }
@@ -103,7 +110,7 @@ export function recommend(s: Scenario, n: Negotiation): Recommendation {
   const round = n.botTurns.length + 1;
 
   const botLast = lastOfferBy(n, side);
-  const current = botLast ? netFor(side, botLast.terms) : aspiration(s);
+  const current = botLast ? netFor(s, botLast.terms) : aspiration(s);
   const userOffer = lastOfferBy(n, userSide);
   const openUserOffer = userOffer && userOffer.status === "open" ? userOffer : null;
 
@@ -127,9 +134,9 @@ export function recommend(s: Scenario, n: Negotiation): Recommendation {
     return { ...base, action: "hold", terms: null, reasoning: "No new offer on the table. Answer the message and hold your position." };
   }
 
-  const u = netFor(side, openUserOffer.terms);
+  const u = netFor(s, openUserOffer.terms);
   const prevUser = previousOfferBy(n, userSide);
-  const userMove = prevUser ? dir * (u - netFor(side, prevUser.terms)) : r * 0.01;
+  const userMove = prevUser ? dir * (u - netFor(s, prevUser.terms)) : r * 0.01;
   const reciprocity = userMove <= r * 0.0025 ? 0.4 : 1;
   const step = remaining * Math.min(0.85, baseFraction * temperament.stepScale * reciprocity);
   const userViolations = violations(side, s, openUserOffer.terms);
@@ -164,11 +171,6 @@ export function recommend(s: Scenario, n: Negotiation): Recommendation {
   // 4. Counter: take their terms, fix anything the client won't sign, and set the price.
   if (dir * (next - u) <= 0) next = u; // never counter past their own number
   const terms = setNet(side, s, openUserOffer.terms, next);
-  // A seller would rather give up the credit than counter above their own list price.
-  if (side === "seller" && terms.sellerCredit > 0 && terms.price > s.property.listPrice) {
-    terms.sellerCredit = Math.max(0, s.property.listPrice - terms.homeWarranty - next);
-    terms.price = priceForNet(side, terms, next);
-  }
   const unfixable = violations(side, s, terms);
   if (unfixable.length) {
     if (round >= 3) return { ...shared, walkAllowed: true, action: "walk", terms: null, reasoning: `Their offer has terms your client can never accept: ${unfixable.join("; ")}. They haven't fixed it, so walk.` };
@@ -182,7 +184,7 @@ export function recommend(s: Scenario, n: Negotiation): Recommendation {
     reasoning:
       userViolations.length > 0 && moved === 0
         ? `Hold your number and fix the terms your client won't accept: ${userViolations.join("; ")}.`
-        : `Counter at a net of about ${next.toLocaleString("en-US")} (moving ${moved.toLocaleString("en-US")} from your last position).${userViolations.length ? ` Also fix: ${userViolations.join("; ")}.` : ""}${reciprocity < 1 ? " They barely moved, so you move less too." : ""}`,
+        : `Counter at a net of about ${next.toLocaleString("en-CA")} (moving ${moved.toLocaleString("en-CA")} from your last position).${userViolations.length ? ` Also fix: ${userViolations.join("; ")}.` : ""}${reciprocity < 1 ? " They barely moved, so you move less too." : ""}`,
   };
 }
 
@@ -191,10 +193,10 @@ export function validateBotCounter(s: Scenario, rec: Recommendation, terms: Term
   const side = botSide(s);
   const dir = direction(side);
   const problems = violations(side, s, terms).map((v) => `Your client won't sign this: ${v}`);
-  const net = netFor(side, terms);
+  const net = netFor(s, terms);
   if (dir * (net - rec.currentNet) > rec.reservationNet * 0.002) problems.push("You can't move backward from your last position (that's retrading).");
   const concession = dir * (rec.currentNet - net);
-  if (concession > rec.maxConcession + 1) problems.push(`That concedes ${Math.round(concession).toLocaleString("en-US")}; the most you can move this turn is ${Math.round(rec.maxConcession).toLocaleString("en-US")}.`);
-  if (side === "buyer" && (terms.loanType !== s.buyer.loanType)) problems.push("Loan type must match your buyer's financing.");
+  if (concession > rec.maxConcession + 1) problems.push(`That concedes ${Math.round(concession).toLocaleString("en-CA")}; the most you can move this turn is ${Math.round(rec.maxConcession).toLocaleString("en-CA")}.`);
+  if (side === "buyer" && terms.financing !== s.buyer.financing) problems.push("Financing must match your buyer's mortgage.");
   return problems;
 }

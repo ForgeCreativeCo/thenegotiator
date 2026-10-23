@@ -59,7 +59,7 @@ export function userSide(s: Scenario): Side {
 
 export function simTime(s: Scenario, hours: number): string {
   const date = new Date(new Date(`${s.startDate}T09:00:00Z`).getTime() + hours * 3_600_000);
-  return date.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+  return date.toLocaleString("en-CA", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" });
 }
 
 function lastOpenOffer(n: Negotiation, by: Side): Offer | null {
@@ -125,7 +125,7 @@ export async function applyUserAction(s: Scenario, n: Negotiation, action: UserA
       n.transaction = createTransaction(s, acceptedTerms(n), n.simHours);
       n.endedBy = "user";
       pushMessage(n, { speaker: "user", text: text || "We accept.", action: "accept", offerId: theirOffer.id });
-      pushMessage(n, { speaker: "system", text: `Mutual acceptance at ${money(theirOffer.terms.price)}. You're under contract.`, event: "deal" });
+      pushMessage(n, { speaker: "system", text: `Agreement of Purchase and Sale accepted at ${money(theirOffer.terms.price)}, ${theirOffer.terms.conditions.length ? "conditional" : "firm"}.`, event: "deal" });
       return;
     }
     case "walk": {
@@ -155,7 +155,7 @@ async function runBotTurn(s: Scenario, n: Negotiation, input: Pick<TurnContext, 
     n.announcedEvents.push(id);
     const summary = `Another buyer's agent submitted a ${offer.strength} offer at ${money(offer.price)}.`;
     if (side === "seller") newEvents.push(`${summary} This is real; you may mention it truthfully.`);
-    else pushMessage(n, { speaker: "system", text: `${summary} You can use it as leverage, but you can't accept it in this simulation.`, event: "competing_offer" });
+    else pushMessage(n, { speaker: "system", text: `${summary} You can tell the buyer's agent how many competing offers you have, but not their details without your seller's direction. Full offer nights arrive in build step 5.`, event: "competing_offer" });
   });
 
   let clientUpdate: string | null = null;
@@ -166,7 +166,8 @@ async function runBotTurn(s: Scenario, n: Negotiation, input: Pick<TurnContext, 
   }
 
   const rec = recommend(s, n);
-  const ctx: TurnContext = { ...input, simTime: simTime(s, n.simHours), newEvents, clientUpdate };
+  const competingOffers = side === "seller" ? n.announcedEvents.filter((e) => e.startsWith("competing-")).length : null;
+  const ctx: TurnContext = { ...input, simTime: simTime(s, n.simHours), newEvents, clientUpdate, competingOffers };
   const turn = await player(s, rec, ctx, n.llmHistory, round);
   const userOffer = lastOpenOffer(n, userSide(s));
 
@@ -188,7 +189,7 @@ async function runBotTurn(s: Scenario, n: Negotiation, input: Pick<TurnContext, 
       n.status = "under_contract";
       n.transaction = createTransaction(s, acceptedTerms(n), n.simHours);
       n.endedBy = "bot";
-      pushMessage(n, { speaker: "system", text: `Mutual acceptance at ${money(userOffer.terms.price)}. You're under contract.`, event: "deal" });
+      pushMessage(n, { speaker: "system", text: `Agreement of Purchase and Sale accepted at ${money(userOffer.terms.price)}, ${userOffer.terms.conditions.length ? "conditional" : "firm"}.`, event: "deal" });
       break;
     }
     case "reject":

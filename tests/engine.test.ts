@@ -37,7 +37,7 @@ describe("parameter generation", () => {
       roles.add(p.userRole);
       ratings.add(p.difficulty.rating);
     }
-    expect(types.size).toBe(9);
+    expect(types.size).toBe(12);
     expect(roles).toEqual(new Set(["buyer_agent", "seller_agent"]));
     expect(ratings).toEqual(new Set(["easy", "moderate", "hard", "brutal"]));
   });
@@ -63,11 +63,14 @@ describe("parameter generation", () => {
   it("gives type-specific terms and features to special property types", () => {
     for (const seed of SEEDS.slice(0, 500)) {
       const p = generateParams({ seed, startDate: START });
-      if (p.property.type === "condo") expect(p.property.hoa).not.toBeNull();
-      if (p.property.type === "multifamily") expect(p.property.units?.length).toBeGreaterThanOrEqual(2);
-      if (p.property.type === "land") expect(p.property.beds).toBe(0);
-      if (p.property.type !== "single_family") expect(p.typeSpecificTerms.length).toBeGreaterThan(0);
-      if (p.buyer.loanType === "cash") expect(p.groundTruth.financing).toEqual([]);
+      if (p.property.type === "condo_apartment") expect(p.property.condo).not.toBeNull();
+      if (p.property.type === "multiplex") expect(p.property.units?.length).toBeGreaterThanOrEqual(2);
+      if (p.property.type === "vacant_land") expect(p.property.beds).toBe(0);
+      if (p.property.type !== "detached") expect(p.typeSpecificTerms.length).toBeGreaterThan(0);
+      if (p.buyer.financing === "cash") expect(p.groundTruth.financing).toEqual([]);
+      if (p.buyer.financing === "insured") expect(p.buyer.reservationPrice).toBeLessThan(1_500_000);
+      expect(p.property.address.province).toBe("ON");
+      expect(p.property.address.postalCode).toMatch(/^[A-Z]\d[A-Z] \d[A-Z]\d$/);
     }
   });
 });

@@ -1,241 +1,269 @@
-import type { Hoa, Market, Property, PropertyType, TypeSpecificTerm, Unit } from "./types";
+import type { CondoInfo, Market, Property, PropertyType, RegionKind, RentalItem, TypeSpecificTerm, Unit } from "./types";
 import { Rng, listingPrice, roundPrice } from "./rng";
-import { zipFor } from "./markets";
+import { postalCodeFor } from "./markets";
 
 interface TypeProfile {
   label: string;
-  /** Price relative to the area's median single-family price. */
+  /** Price relative to the region's detached benchmark. */
   priceFactor: [number, number];
   beds: [number, number];
   sqftPerBed: [number, number];
-  lotAcres: [number, number];
   yearBuilt: [number, number];
-  /** How likely this type is in each metro type. 0 = never. */
-  weight: Record<Market["metroType"], number>;
-  hoa: "none" | "optional" | "required";
+  styles: string[];
+  weight: Record<RegionKind, number>;
   terms: TypeSpecificTerm[];
 }
 
 export const PROPERTY_TYPES: Record<PropertyType, TypeProfile> = {
-  single_family: {
-    label: "Single-family home",
-    priceFactor: [0.75, 1.6],
+  detached: {
+    label: "Detached house",
+    priceFactor: [0.8, 1.25],
     beds: [2, 5],
-    sqftPerBed: [420, 700],
-    lotAcres: [0.1, 0.5],
-    yearBuilt: [1925, 2021],
-    weight: { urban: 3, suburban: 6, rural: 3 },
-    hoa: "optional",
+    sqftPerBed: [400, 650],
+    yearBuilt: [1910, 2020],
+    styles: ["2-storey", "bungalow", "backsplit", "sidesplit", "1.5-storey"],
+    weight: { toronto: 3, gta: 5, city: 6, small_city: 6, cottage: 2, north: 6 },
     terms: [],
   },
-  condo: {
-    label: "Condominium",
-    priceFactor: [0.45, 1.1],
-    beds: [1, 3],
-    sqftPerBed: [380, 600],
-    lotAcres: [0, 0],
-    yearBuilt: [1965, 2022],
-    weight: { urban: 4, suburban: 2, rural: 0 },
-    hoa: "required",
+  semi_detached: {
+    label: "Semi-detached house",
+    priceFactor: [0.72, 0.88],
+    beds: [2, 4],
+    sqftPerBed: [380, 520],
+    yearBuilt: [1905, 2015],
+    styles: ["2-storey", "bungalow", "backsplit"],
+    weight: { toronto: 3, gta: 3, city: 2, small_city: 1, cottage: 0, north: 1 },
+    terms: [{ key: "mutual_drive", label: "Shared wall and mutual drive", description: "Acknowledges the party wall and any shared driveway or drain rights-of-way registered on title." }],
+  },
+  freehold_townhouse: {
+    label: "Freehold townhouse",
+    priceFactor: [0.65, 0.82],
+    beds: [2, 4],
+    sqftPerBed: [400, 550],
+    yearBuilt: [1975, 2022],
+    styles: ["2-storey", "3-storey"],
+    weight: { toronto: 1, gta: 4, city: 3, small_city: 2, cottage: 0, north: 0.5 },
+    terms: [{ key: "potl", label: "Common elements (POTL)", description: "Whether the town is on a parcel of tied land with a common elements fee, and the buyer's review of the condo documents for it." }],
+  },
+  condo_townhouse: {
+    label: "Condo townhouse",
+    priceFactor: [0.55, 0.72],
+    beds: [2, 4],
+    sqftPerBed: [380, 500],
+    yearBuilt: [1972, 2020],
+    styles: ["2-storey", "3-storey", "stacked"],
+    weight: { toronto: 1.5, gta: 2, city: 2, small_city: 1, cottage: 0, north: 0.3 },
+    terms: [{ key: "parking_locker", label: "Parking and locker", description: "Which parking spaces and lockers are included, and whether they're owned units or exclusive use." }],
+  },
+  condo_apartment: {
+    label: "Condo apartment",
+    priceFactor: [0.38, 0.65],
+    beds: [0, 3],
+    sqftPerBed: [400, 600],
+    yearBuilt: [1970, 2024],
+    styles: ["apartment"],
+    weight: { toronto: 6, gta: 3, city: 2.5, small_city: 1, cottage: 0.3, north: 0.5 },
+    terms: [{ key: "parking_locker", label: "Parking and locker", description: "Which parking spaces and lockers are included, and whether they're owned units or exclusive use." }],
+  },
+  multiplex: {
+    label: "Duplex or triplex",
+    priceFactor: [1.0, 1.35],
+    beds: [4, 8],
+    sqftPerBed: [330, 450],
+    yearBuilt: [1900, 1985],
+    styles: ["2-storey", "2.5-storey"],
+    weight: { toronto: 1.5, gta: 0.7, city: 2, small_city: 1, cottage: 0, north: 1 },
     terms: [
-      { key: "hoa_doc_review", label: "HOA document review", description: "Days the buyer has to review the declaration, budget, minutes and reserve study, and cancel if unsatisfied." },
-      { key: "special_assessment", label: "Special assessments", description: "Who pays any assessment levied before or after closing." },
-      { key: "condo_questionnaire", label: "Lender condo questionnaire", description: "Whether the project meets the buyer's loan program (e.g. FHA approval)." },
+      { key: "tenancies", label: "Tenancies", description: "Buyer assumes the existing tenancies, or the seller delivers a unit vacant. Under the Residential Tenancies Act only a purchaser who will live there can give an N12 notice." },
+      { key: "rent_deposits", label: "Last month's rent deposits", description: "Tenants' last month's rent deposits and interest credited to the buyer on completion." },
+      { key: "legal_units", label: "Legal units", description: "Whether the seller makes any warranty that the units are legal or legally non-conforming." },
     ],
   },
-  townhouse: {
-    label: "Townhouse",
-    priceFactor: [0.6, 1.2],
-    beds: [2, 4],
-    sqftPerBed: [400, 600],
-    lotAcres: [0.02, 0.08],
-    yearBuilt: [1975, 2023],
-    weight: { urban: 3, suburban: 4, rural: 0 },
-    hoa: "required",
+  cottage: {
+    label: "Cottage or waterfront",
+    priceFactor: [0.7, 2.2],
+    beds: [2, 5],
+    sqftPerBed: [300, 500],
+    yearBuilt: [1950, 2018],
+    styles: ["bungalow", "1.5-storey", "A-frame", "2-storey"],
+    weight: { toronto: 0, gta: 0, city: 0, small_city: 0.5, cottage: 7, north: 1.5 },
     terms: [
-      { key: "hoa_doc_review", label: "HOA document review", description: "Days to review the HOA documents and cancel if unsatisfied." },
-      { key: "shared_components", label: "Shared walls and roof", description: "Who is responsible for shared roof, wall and party-wall repairs." },
+      { key: "waterfront_chattels", label: "Dock, boats and contents", description: "Which waterfront and recreational items convey: dock, boat lift, boats, furniture." },
+      { key: "shore_road", label: "Shore road allowance", description: "Whether the shore road allowance in front of the property has been closed and purchased." },
+      { key: "road_access", label: "Road access", description: "Year-round municipal road, or a private or seasonal road with a road association." },
+    ],
+  },
+  rural_acreage: {
+    label: "Rural acreage",
+    priceFactor: [0.8, 1.6],
+    beds: [2, 5],
+    sqftPerBed: [400, 650],
+    yearBuilt: [1880, 2018],
+    styles: ["2-storey", "bungalow", "farmhouse"],
+    weight: { toronto: 0, gta: 0, city: 0.5, small_city: 1.5, cottage: 2, north: 2 },
+    terms: [
+      { key: "survey", label: "Survey", description: "Whether the seller provides an existing survey, or the buyer orders a new one." },
+      { key: "outbuildings", label: "Outbuildings and equipment", description: "Barns, shops and any equipment that convey." },
+    ],
+  },
+  vacant_land: {
+    label: "Vacant land",
+    priceFactor: [0.12, 0.45],
+    beds: [0, 0],
+    sqftPerBed: [0, 0],
+    yearBuilt: [0, 0],
+    styles: ["vacant land"],
+    weight: { toronto: 0, gta: 0.2, city: 0.4, small_city: 1, cottage: 1.5, north: 1.5 },
+    terms: [
+      { key: "due_diligence", label: "Due diligence", description: "Buyer's review of zoning, building permits, conservation authority rules, and septic permit feasibility." },
+      { key: "survey", label: "Survey", description: "Whether the seller provides an existing survey, or the buyer orders a new one." },
+    ],
+  },
+  new_construction: {
+    label: "New construction (freehold)",
+    priceFactor: [1.0, 1.3],
+    beds: [3, 5],
+    sqftPerBed: [450, 650],
+    yearBuilt: [2026, 2027],
+    styles: ["2-storey", "bungalow"],
+    weight: { toronto: 0, gta: 2, city: 1.5, small_city: 1.5, cottage: 0.5, north: 0.3 },
+    terms: [
+      { key: "tarion", label: "Tarion warranty and closing dates", description: "Tarion enrolment, firm or tentative closing date, and delayed-closing compensation under the Tarion addendum." },
+      { key: "upgrades", label: "Upgrades", description: "Which design-centre upgrades are included in the price." },
+      { key: "hst", label: "HST", description: "HST included in the price, with the new-housing rebate assigned to the builder." },
+    ],
+  },
+  land_lease_home: {
+    label: "Home in a land-lease community",
+    priceFactor: [0.18, 0.35],
+    beds: [2, 3],
+    sqftPerBed: [350, 480],
+    yearBuilt: [1985, 2022],
+    styles: ["bungalow"],
+    weight: { toronto: 0, gta: 0, city: 0, small_city: 0.5, cottage: 1, north: 0.5 },
+    terms: [
+      { key: "park_approval", label: "Park approval", description: "The community operator must approve the buyer and assign or issue a new land lease." },
+      { key: "land_lease_fee", label: "Land lease fee", description: "The monthly land lease fee and what it covers." },
     ],
   },
   co_op: {
     label: "Co-op apartment",
-    priceFactor: [0.4, 0.9],
+    priceFactor: [0.35, 0.55],
     beds: [1, 3],
     sqftPerBed: [400, 550],
-    lotAcres: [0, 0],
     yearBuilt: [1925, 1975],
-    weight: { urban: 1.5, suburban: 0, rural: 0 },
-    hoa: "required",
-    terms: [
-      { key: "board_approval", label: "Board approval", description: "The co-op board must approve the buyer after a financial review and interview. The deal is contingent on it." },
-      { key: "flip_tax", label: "Flip tax", description: "Transfer fee charged by the co-op; who pays it is negotiable." },
-      { key: "financing_limit", label: "Maximum financing", description: "The building caps how much the buyer can finance." },
-    ],
-  },
-  multifamily: {
-    label: "Multifamily (2–4 units)",
-    priceFactor: [0.9, 1.8],
-    beds: [4, 10],
-    sqftPerBed: [350, 480],
-    lotAcres: [0.08, 0.3],
-    yearBuilt: [1900, 1995],
-    weight: { urban: 3, suburban: 1.5, rural: 0.3 },
-    hoa: "none",
-    terms: [
-      { key: "rent_roll", label: "Rent roll and leases", description: "Seller provides current leases and a rent roll for buyer review." },
-      { key: "estoppels", label: "Tenant estoppels", description: "Signed tenant statements confirming rent, deposits and lease terms." },
-      { key: "security_deposits", label: "Security deposit transfer", description: "Tenant deposits credited to the buyer at closing." },
-      { key: "delivery_vacancy", label: "Unit delivered vacant", description: "Whether any unit must be vacant at closing (e.g. for an owner-occupant)." },
-    ],
-  },
-  manufactured: {
-    label: "Manufactured home",
-    priceFactor: [0.25, 0.55],
-    beds: [2, 4],
-    sqftPerBed: [350, 500],
-    lotAcres: [0.15, 2],
-    yearBuilt: [1985, 2022],
-    weight: { urban: 0, suburban: 1, rural: 3 },
-    hoa: "none",
-    terms: [
-      { key: "foundation_cert", label: "Foundation certification", description: "Engineer's certification that the foundation meets lender requirements." },
-      { key: "title_status", label: "Real vs. personal property", description: "Whether the home is titled with the land as real property, which affects financing." },
-    ],
-  },
-  new_construction: {
-    label: "New construction",
-    priceFactor: [1.0, 1.5],
-    beds: [3, 5],
-    sqftPerBed: [480, 700],
-    lotAcres: [0.12, 0.35],
-    yearBuilt: [2026, 2027],
-    weight: { urban: 0.5, suburban: 3, rural: 1 },
-    hoa: "required",
-    terms: [
-      { key: "completion_date", label: "Completion date", description: "Builder's estimated completion; what happens if it slips." },
-      { key: "upgrades", label: "Upgrades and options", description: "Which design-center upgrades are included in the price." },
-      { key: "builder_incentive", label: "Builder incentive", description: "Closing-cost or rate buydown incentive, often tied to the builder's preferred lender." },
-      { key: "builder_warranty", label: "Builder warranty", description: "1-2-10 style workmanship, systems and structural warranty." },
-    ],
-  },
-  rural_acreage: {
-    label: "Home on acreage",
-    priceFactor: [0.9, 1.9],
-    beds: [2, 5],
-    sqftPerBed: [450, 750],
-    lotAcres: [2, 40],
-    yearBuilt: [1940, 2020],
-    weight: { urban: 0, suburban: 0.7, rural: 5 },
-    hoa: "none",
-    terms: [
-      { key: "well_septic", label: "Well and septic inspections", description: "Water potability, flow rate, and septic system inspections." },
-      { key: "survey", label: "Survey", description: "Boundary survey to confirm acreage, fences and easements." },
-      { key: "outbuildings", label: "Outbuildings and equipment", description: "Barns, shops, and any equipment or livestock that convey." },
-    ],
-  },
-  land: {
-    label: "Residential lot or land",
-    priceFactor: [0.12, 0.45],
-    beds: [0, 0],
-    sqftPerBed: [0, 0],
-    lotAcres: [0.25, 20],
-    yearBuilt: [0, 0],
-    weight: { urban: 0.3, suburban: 1, rural: 3 },
-    hoa: "optional",
-    terms: [
-      { key: "feasibility", label: "Feasibility period", description: "Time to confirm the buyer can build what they want: zoning, setbacks, permits." },
-      { key: "perc_test", label: "Perc test", description: "Soil test that determines whether a septic system can be permitted." },
-      { key: "utilities", label: "Utility access", description: "Cost and availability of power, water, and road access." },
-    ],
+    styles: ["apartment"],
+    weight: { toronto: 0.4, gta: 0, city: 0, small_city: 0, cottage: 0, north: 0 },
+    terms: [{ key: "board_approval", label: "Board approval", description: "The co-op board must approve the buyer after a financial review and interview; the buyer is buying shares, not land." }],
   },
 };
 
-const STREET_NAMES = [
-  "Maple", "Oak", "Cedar", "Willow", "Juniper", "Hawthorne", "Sycamore", "Magnolia", "Aspen", "Birch",
-  "Ridgeview", "Lakeshore", "Meadowlark", "Briarwood", "Foxglove", "Stonegate", "Kestrel", "Laurel",
-  "Harbor", "Summit", "Prairie", "Riverbend", "Canyon", "Orchard", "Whitmore", "Ashford", "Kingsley",
+const CONDO_TYPES = new Set<PropertyType>(["condo_apartment", "condo_townhouse"]);
+const RURAL_TYPES = new Set<PropertyType>(["cottage", "rural_acreage", "vacant_land"]);
+
+export function isCondo(type: PropertyType): boolean {
+  return CONDO_TYPES.has(type);
+}
+
+export function isRural(type: PropertyType): boolean {
+  return RURAL_TYPES.has(type);
+}
+
+const STREETS = [
+  "Maple", "Oak", "Cedar", "Willow", "Birch", "Sumach", "Glenwood", "Bloor", "Danforth", "Pape", "Lakeshore", "Kingsway",
+  "Elgin", "Wellington", "Queen", "Victoria", "Albert", "Colborne", "Dundas", "Brock", "Simcoe", "Huron", "Erie", "Ontario",
+  "Thornhill", "Cumberland", "Sherbourne", "Ashdale", "Glebeholme", "Riverdale", "Hillcrest", "Woodbine",
 ];
-const STREET_SUFFIXES = ["St", "Ave", "Ln", "Dr", "Ct", "Way", "Rd", "Pl", "Trail", "Circle"];
+const SUFFIXES = ["St", "Ave", "Rd", "Dr", "Cres", "Blvd", "Crt", "Way", "Gate", "Lane"];
 
 function streetAddress(rng: Rng, type: PropertyType): string {
-  const number = rng.int(100, 9899);
-  const street = `${rng.pick(STREET_NAMES)} ${rng.pick(STREET_SUFFIXES)}`;
-  if (type === "condo" || type === "co_op") return `${number} ${street}, Unit ${rng.int(1, 18)}${rng.pick(["A", "B", "C", "D", "F", "G"])}`;
-  if (type === "rural_acreage" || type === "land") return `${rng.int(1000, 48999)} ${rng.pick(["County Road", "Ranch Rd", "Old Mill Rd", "Hollow Rd"])} ${rng.int(2, 499)}`;
-  return `${number} ${street}`;
+  const n = rng.int(10, 2899);
+  if (type === "condo_apartment" || type === "co_op") return `${rng.int(10, 3500)} ${rng.pick(STREETS)} ${rng.pick(SUFFIXES)}, Unit ${rng.int(2, 38)}${String(rng.int(1, 18)).padStart(2, "0")}`;
+  if (type === "condo_townhouse") return `${rng.int(1, 120)}-${n} ${rng.pick(STREETS)} ${rng.pick(SUFFIXES)}`;
+  if (type === "cottage") return `${rng.int(1000, 3999)} ${rng.pick(["Lake of Bays", "Kennisis Lake", "Gull Lake", "Clear Lake", "Sparrow Lake", "Lake Joseph"])} Rd`;
+  if (type === "rural_acreage" || type === "vacant_land") return `${rng.int(1000, 9999)} Concession ${rng.int(2, 14)}`;
+  if (type === "land_lease_home") return `${rng.int(1, 240)} ${rng.pick(["Pine Ridge", "Sandy Shores", "Maple Grove", "Riverview"])} Park Lane`;
+  return `${n} ${rng.pick(STREETS)} ${rng.pick(SUFFIXES)}`;
 }
 
 function pickType(rng: Rng, market: Market): PropertyType {
-  const entries = (Object.keys(PROPERTY_TYPES) as PropertyType[])
-    .map((type) => [type, PROPERTY_TYPES[type].weight[market.metroType]] as const)
-    .filter(([, weight]) => weight > 0);
+  const entries = (Object.keys(PROPERTY_TYPES) as PropertyType[]).map((t) => [t, PROPERTY_TYPES[t].weight[market.regionKind]] as const).filter(([, w]) => w > 0);
   return rng.weighted(entries);
 }
 
-function generateHoa(rng: Rng, type: PropertyType, value: number): Hoa {
-  const base = type === "co_op" ? value * 0.0022 : type === "condo" ? value * 0.0011 : rng.range(40, 180);
+function generateCondo(rng: Rng, market: Market, type: PropertyType, value: number, sqft: number): CondoInfo {
+  const prefix = market.municipality === "Toronto" ? "TSCC" : market.municipality === "Ottawa" ? "OCSCC" : rng.pick(["PSCC", "YRSCC", "WCC", "DSCC", "HCC"]);
+  const perSqft = rng.range(0.55, 1.0) * (type === "condo_townhouse" ? 0.8 : 1);
   return {
-    monthlyDues: Math.round(base / 5) * 5,
-    includes:
-      type === "co_op"
-        ? ["property taxes", "heat", "water", "building insurance", "maintenance"]
-        : type === "condo"
-          ? rng.sample(["water/sewer", "trash", "exterior insurance", "landscaping", "pool", "fitness center", "reserves"], 4)
-          : ["common areas", "landscaping"],
-    reserveFundStatus: rng.weighted([
-      ["strong", 0.35],
-      ["adequate", 0.45],
-      ["underfunded", 0.2],
-    ]),
-    rentalCap: type === "condo" || type === "co_op" ? rng.chance(0.4) : false,
-    fhaApproved: type === "condo" ? rng.chance(0.45) : null,
+    corporation: `${prefix} ${rng.int(100, 2999)}`,
+    monthlyFees: Math.round((sqft * perSqft) / 5) * 5,
+    includes: rng.sample(["heat", "water", "hydro", "building insurance", "common elements", "parking", "cable and internet"], rng.int(3, 5)),
+    reserveFundStatus: rng.weighted([["strong", 0.35], ["adequate", 0.45], ["underfunded", 0.2]]),
+    parking: type === "condo_townhouse" ? "exclusive_use" : rng.weighted([["owned", 0.45], ["exclusive_use", 0.3], ["none", value < 600_000 ? 0.4 : 0.15]]),
+    locker: rng.chance(0.6),
+    petRestrictions: rng.chance(0.3),
+    shortTermRentalBan: rng.chance(0.7),
   };
 }
 
-function generateUnits(rng: Rng, totalBeds: number, market: Market): Unit[] {
-  const count = totalBeds >= 8 ? rng.int(3, 4) : 2;
-  const rentPerBed = market.medianPrice * rng.range(0.0022, 0.0032);
+function generateUnits(rng: Rng, totalBeds: number, market: Market, startYear: number): Unit[] {
+  const count = totalBeds >= 6 ? 3 : 2;
+  const rentPerBed = market.benchmarkPrice * rng.range(0.0011, 0.0016);
   const units: Unit[] = [];
   let remaining = totalBeds;
   for (let i = 0; i < count; i++) {
     const beds = i === count - 1 ? Math.max(1, remaining) : Math.max(1, Math.round(totalBeds / count));
     remaining -= beds;
-    const vacant = rng.chance(0.2);
+    const tenancy = i === 0 && rng.chance(0.3) ? "owner" : rng.weighted<Unit["tenancy"]>([["month_to_month", 0.5], ["fixed_term", 0.3], ["vacant", 0.2]]);
+    const since = startYear - rng.int(0, 14);
+    // Long-term tenants under rent control pay well below market.
+    const discount = tenancy === "month_to_month" ? Math.max(0.55, 1 - (startYear - since) * 0.04) : 1;
     units.push({
-      label: count === 2 ? (i === 0 ? "Lower" : "Upper") : `Unit ${i + 1}`,
+      label: count === 2 ? (i === 0 ? "Main floor" : "Upper") : ["Lower", "Main floor", "Upper"][i],
       beds,
       baths: 1,
-      monthlyRent: vacant ? null : Math.round((rentPerBed * beds * rng.range(0.85, 1.05)) / 25) * 25,
-      leaseEnds: vacant ? null : rng.pick(["month-to-month", "2027-01-31", "2027-05-31", "2027-08-31"]),
+      monthlyRent: tenancy === "vacant" || tenancy === "owner" ? null : Math.round((rentPerBed * beds * discount) / 25) * 25,
+      tenancy,
+      tenantSince: tenancy === "vacant" || tenancy === "owner" ? null : `${since}`,
     });
   }
   return units;
 }
 
+function generateRentalItems(rng: Rng, type: PropertyType): RentalItem[] {
+  if (type === "vacant_land" || type === "condo_apartment" || type === "co_op") return [];
+  const items: RentalItem[] = [];
+  if (rng.chance(0.5)) items.push({ item: "Hot water tank", monthly: rng.int(28, 48), buyoutCost: roundPrice(rng.range(1_200, 3_200)) });
+  if (rng.chance(0.15)) items.push({ item: "Furnace and air conditioner", monthly: rng.int(95, 170), buyoutCost: roundPrice(rng.range(6_000, 13_000)) });
+  if (rng.chance(0.12)) items.push({ item: "Water softener", monthly: rng.int(25, 45), buyoutCost: roundPrice(rng.range(800, 2_000)) });
+  return items;
+}
+
 function typeExtras(rng: Rng, type: PropertyType, value: number): Record<string, string | number | boolean> {
   switch (type) {
-    case "co_op":
-      return { flipTaxPct: rng.pick([0, 1, 2, 2, 3]), maxFinancingPct: rng.pick([75, 80, 80, 90]), boardInterviewRequired: true, sublettingAllowed: rng.chance(0.3) };
-    case "manufactured":
-      return { titledAsRealProperty: rng.chance(0.65), lotRentMonthly: rng.chance(0.3) ? rng.int(350, 750) : 0, make: rng.pick(["Clayton", "Champion", "Palm Harbor", "Fleetwood", "Cavco"]), singleOrDouble: rng.pick(["single-wide", "double-wide", "double-wide", "triple-wide"]) };
     case "new_construction":
-      return { builder: rng.pick(["Hartwell Homes", "Brookstone Builders", "Crestline Communities", "Pinecrest Homes"]), estimatedCompletion: rng.pick(["2026-12-15", "2027-01-30", "2027-03-15"]), percentComplete: rng.pick([20, 40, 60, 85, 100]), includedUpgrades: roundPrice(value * rng.range(0.01, 0.04)), builderIncentive: roundPrice(value * rng.range(0.005, 0.02)), preferredLenderRequiredForIncentive: true };
+      return { builder: rng.pick(["Hartwell Homes", "Brookstone Builders", "Crestline Communities", "Pinecrest Homes"]), closingDateType: rng.pick(["firm", "tentative"]), percentComplete: rng.pick([60, 85, 100]), includedUpgrades: roundPrice(value * rng.range(0.01, 0.04)), tarionEnrolled: true };
+    case "cottage":
+      return { waterfrontFt: rng.int(80, 400), exposure: rng.pick(["west (sunsets)", "south", "east", "north"]), roadAccess: rng.pick(["year-round municipal", "year-round private", "seasonal private"]), shoreRoadAllowanceClosed: rng.chance(0.55), dock: rng.pick(["crib dock", "floating dock", "none"]) };
     case "rural_acreage":
-      return { outbuildings: rng.pick(["40x60 shop", "barn and run-in shed", "detached garage and greenhouse", "none"]), fenced: rng.chance(0.6), agExemption: rng.chance(0.35), roadMaintenance: rng.pick(["county", "private road agreement", "shared easement"]) };
-    case "land":
-      return { zoning: rng.pick(["R-1 residential", "agricultural/residential", "rural residential"]), utilitiesAtRoad: rng.pick(["power only", "power and water", "none"]), percTested: rng.chance(0.3), roadFrontageFt: rng.int(80, 900) };
-    case "multifamily":
-      return { separateMeters: rng.chance(0.6), coinLaundry: rng.chance(0.4) };
+      return { outbuildings: rng.pick(["detached shop", "bank barn", "drive shed", "none"]), zoning: rng.pick(["Rural (RU)", "Agricultural (A1)"]), fenced: rng.chance(0.6) };
+    case "vacant_land":
+      return { zoning: rng.pick(["Rural Residential (RR)", "Rural (RU)", "Waterfront Residential (WR)"]), hydroAtRoad: rng.chance(0.6), roadFrontageFt: rng.int(150, 900), conservationAuthority: rng.chance(0.5) };
+    case "land_lease_home":
+      return { landLeaseFeeMonthly: rng.int(550, 900), communityAgeRestriction: rng.chance(0.6) ? "55+" : "none" };
+    case "co_op":
+      return { maintenanceIncludesTaxes: true, maxFinancingPct: rng.pick([50, 65, 75]) };
+    case "multiplex":
+      return { separateHydroMeters: rng.chance(0.6), fireCodeRetrofit: rng.chance(0.5) };
     default:
       return {};
   }
 }
 
 const FEATURES = [
-  "updated kitchen", "quartz counters", "original hardwood floors", "finished basement", "screened porch",
-  "fenced backyard", "vaulted ceilings", "primary suite on main", "solar panels (owned)", "solar panels (leased)",
-  "new windows", "fireplace", "walk-in pantry", "mature trees", "covered patio", "pool", "home office",
-  "mudroom", "EV charger", "mountain views", "walkable to downtown", "corner lot",
+  "updated kitchen", "quartz counters", "original hardwood", "finished basement", "separate side entrance", "landscaped backyard",
+  "deck", "gas fireplace", "primary ensuite", "walk to subway", "steps to the GO station", "near top-rated schools", "detached garage",
+  "private drive", "mature trees", "renovated bathrooms", "pot lights", "central vacuum", "EV charger", "solar panels",
 ];
 
 export interface PropertyResult {
@@ -246,77 +274,80 @@ export interface PropertyResult {
 export function generateProperty(rng: Rng, market: Market, startDate: Date): PropertyResult {
   const type = pickType(rng, market);
   const profile = PROPERTY_TYPES[type];
-  const isLand = type === "land";
+  const isLand = type === "vacant_land";
+  const startYear = startDate.getUTCFullYear();
 
   const beds = isLand ? 0 : rng.int(profile.beds[0], profile.beds[1]);
-  const sqft = isLand ? 0 : Math.round((beds * rng.range(profile.sqftPerBed[0], profile.sqftPerBed[1]) + rng.range(0, 400)) / 10) * 10;
+  const sqft = isLand ? 0 : Math.round((Math.max(1, beds) * rng.range(profile.sqftPerBed[0], profile.sqftPerBed[1]) + rng.range(0, 300)) / 10) * 10;
   const yearBuilt = isLand ? 0 : rng.int(profile.yearBuilt[0], profile.yearBuilt[1]);
-  const age = isLand ? 0 : startDate.getFullYear() - yearBuilt;
   const condition = (type === "new_construction" ? 5 : rng.weighted([[1, 0.08], [2, 0.2], [3, 0.37], [4, 0.25], [5, 0.1]])) as Property["condition"];
+  const conditionFactor = { 1: 0.8, 2: 0.9, 3: 1, 4: 1.07, 5: 1.13 }[condition];
+  const marketValue = roundPrice(market.benchmarkPrice * rng.range(profile.priceFactor[0], profile.priceFactor[1]) * conditionFactor);
 
-  const conditionFactor = { 1: 0.78, 2: 0.9, 3: 1, 4: 1.07, 5: 1.14 }[condition];
-  const metroFactor = market.metroType === "urban" ? 1.05 : 1;
-  const marketValue = roundPrice(market.medianPrice * rng.range(profile.priceFactor[0], profile.priceFactor[1]) * conditionFactor * metroFactor);
-
-  // Pricing strategy: in hot markets some sellers underprice to draw multiple offers; in cold markets many overprice.
+  // In hot Ontario markets many sellers list low to hold an offer night; in cold markets many overprice.
   const strategy = rng.weighted<"under" | "at" | "over" | "way_over">(
     market.temperature === "hot"
-      ? [["under", 0.3], ["at", 0.45], ["over", 0.2], ["way_over", 0.05]]
+      ? [["under", market.offerNightsCommon ? 0.45 : 0.25], ["at", 0.35], ["over", 0.15], ["way_over", 0.05]]
       : market.temperature === "balanced"
         ? [["under", 0.08], ["at", 0.5], ["over", 0.32], ["way_over", 0.1]]
         : [["under", 0.03], ["at", 0.35], ["over", 0.4], ["way_over", 0.22]],
   );
-  const pricingFactor = { under: rng.range(0.94, 0.98), at: rng.range(0.99, 1.03), over: rng.range(1.04, 1.09), way_over: rng.range(1.1, 1.18) }[strategy];
-
-  const daysOnMarket = Math.max(0, Math.round(market.avgDaysOnMarket * rng.range(0.2, strategy === "way_over" || strategy === "over" ? 2.6 : 1.3)));
-  let listPrice = listingPrice(marketValue * pricingFactor);
-  const priceHistory: Property["priceHistory"] = [];
+  const pricingFactor = { under: rng.range(0.85, 0.95), at: rng.range(0.99, 1.03), over: rng.range(1.04, 1.09), way_over: rng.range(1.1, 1.18) }[strategy];
+  const daysOnMarket = Math.max(0, Math.round(market.avgDaysOnMarket * rng.range(0.2, strategy === "over" || strategy === "way_over" ? 2.6 : 1.3)));
+  const listPrice = listingPrice(marketValue * pricingFactor);
   const listedOn = new Date(startDate.getTime() - daysOnMarket * 86_400_000);
   const originalListPrice = daysOnMarket > 30 && pricingFactor > 1.03 ? listingPrice(listPrice * rng.range(1.03, 1.07)) : listPrice;
-  priceHistory.push({ date: isoDate(listedOn), event: "Listed", price: originalListPrice });
-  if (originalListPrice !== listPrice) {
-    const reducedOn = new Date(listedOn.getTime() + Math.round(daysOnMarket * rng.range(0.4, 0.8)) * 86_400_000);
-    priceHistory.push({ date: isoDate(reducedOn), event: "Price reduced", price: listPrice });
-  }
+  const priceHistory: Property["priceHistory"] = [];
   if (type !== "new_construction" && rng.chance(0.5)) {
     const yearsAgo = rng.int(3, 22);
-    priceHistory.unshift({
-      date: `${startDate.getFullYear() - yearsAgo}-${String(rng.int(1, 12)).padStart(2, "0")}-${String(rng.int(1, 28)).padStart(2, "0")}`,
-      event: "Sold",
-      price: roundPrice(marketValue * Math.pow(0.955, yearsAgo) * rng.range(0.9, 1.05)),
-    });
+    priceHistory.push({ date: `${startYear - yearsAgo}-${String(rng.int(1, 12)).padStart(2, "0")}-${String(rng.int(1, 28)).padStart(2, "0")}`, event: "Sold", price: roundPrice(marketValue * Math.pow(0.95, yearsAgo) * rng.range(0.9, 1.05)) });
   }
-  listPrice = Math.max(listPrice, 1000);
+  priceHistory.push({ date: isoDate(listedOn), event: "Listed", price: originalListPrice });
+  if (originalListPrice !== listPrice) priceHistory.push({ date: isoDate(new Date(listedOn.getTime() + Math.round(daysOnMarket * rng.range(0.4, 0.8)) * 86_400_000)), event: "Price changed", price: listPrice });
 
-  const hoa = profile.hoa === "required" || (profile.hoa === "optional" && rng.chance(market.metroType === "suburban" ? 0.4 : 0.15)) ? generateHoa(rng, type, marketValue) : null;
-  const rural = type === "rural_acreage" || type === "land" || (type === "manufactured" && market.metroType === "rural");
+  const rural = isRural(type) || type === "land_lease_home";
+  const condo = isCondo(type) ? generateCondo(rng, market, type, marketValue, sqft) : null;
+  const lot =
+    type === "condo_apartment" || type === "co_op" || type === "condo_townhouse"
+      ? { front: null, depth: null, acres: null }
+      : type === "cottage" || type === "rural_acreage" || type === "vacant_land"
+        ? { front: null, depth: null, acres: Number(rng.range(type === "rural_acreage" ? 2 : 0.5, type === "rural_acreage" ? 50 : 5).toFixed(1)) }
+        : type === "land_lease_home"
+          ? { front: null, depth: null, acres: null }
+          : { front: type === "freehold_townhouse" ? rng.int(18, 25) : type === "semi_detached" ? rng.int(20, 30) : rng.int(30, 60), depth: rng.int(95, 150), acres: null };
 
+  const age = isLand ? 0 : startYear - yearBuilt;
   const property: Property = {
     type,
-    address: { street: streetAddress(rng, type), city: market.city, stateCode: market.stateCode, zip: zipFor(market, rng) },
+    address: { street: streetAddress(rng, type), municipality: market.municipality, province: "ON", postalCode: postalCodeFor(market, rng) },
+    style: rng.pick(profile.styles),
     beds,
-    baths: isLand ? 0 : Math.max(1, Math.round((beds * rng.range(0.55, 0.85)) * 2) / 2),
+    baths: isLand ? 0 : type === "multiplex" ? (beds >= 6 ? 3 : 2) + rng.pick([0, 0, 0.5]) : Math.max(1, Math.round(Math.max(1, beds) * rng.range(0.5, 0.85) * 2) / 2),
     sqft,
-    lotAcres: Number(rng.range(profile.lotAcres[0], profile.lotAcres[1]).toFixed(2)),
+    lotFrontageFt: lot.front,
+    lotDepthFt: lot.depth,
+    acres: lot.acres,
     yearBuilt,
     condition,
-    stories: isLand ? 0 : type === "condo" || type === "co_op" || type === "manufactured" ? 1 : rng.int(1, type === "townhouse" ? 3 : 2),
-    garage: isLand ? "none" : type === "condo" || type === "co_op" ? rng.pick(["assigned space", "deeded garage space", "street parking"]) : rng.pick(["1-car attached", "2-car attached", "2-car detached", "carport", "3-car attached"]),
-    heating: isLand ? "n/a" : age > 50 ? rng.pick(["gas boiler (radiators)", "oil furnace", "gas forced air"]) : rng.pick(["gas forced air", "heat pump", "electric baseboard"]),
-    cooling: isLand ? "n/a" : rng.pick(["central air", "central air", "heat pump", "window units", "mini-splits"]),
-    water: rural && rng.chance(0.75) ? "well" : "public",
-    sewer: rural && rng.chance(0.8) ? "septic" : "public",
+    basement: isLand || type === "condo_apartment" || type === "co_op" ? "none" : type === "multiplex" ? "apartment" : rng.weighted([["finished", 0.5], ["unfinished", 0.3], ["apartment", 0.1], ["none", 0.1]]),
+    parking: isLand ? "none" : condo ? (condo.parking === "none" ? "No parking" : `1 space (${condo.parking === "owned" ? "owned" : "exclusive use"})`) : rng.pick(["Private drive, 2 spaces", "Mutual drive, 1 space", "Attached garage, 2 spaces", "Detached garage, 1 space", "Street permit parking"]),
+    heating: isLand ? "n/a" : age > 70 && rng.chance(0.3) ? rng.pick(["Hot water radiators, gas", "Forced air, oil"]) : rng.pick(["Forced air, gas", "Forced air, gas", "Heat pump", "Baseboard, electric"]),
+    cooling: isLand ? "n/a" : rng.pick(["Central air", "Central air", "Ductless mini-splits", "Window units", "None"]),
+    water: rural ? (type === "cottage" && rng.chance(0.4) ? "lake" : "well") : "municipal",
+    sewer: rural ? "septic" : "municipal",
     features: isLand ? [] : rng.sample(FEATURES, rng.int(3, 6)),
-    hoa,
-    units: type === "multifamily" ? generateUnits(rng, beds, market) : null,
-    annualTaxes: roundPrice(marketValue * rng.range(0.006, 0.022)),
+    condo,
+    potlFee: type === "freehold_townhouse" && rng.chance(0.4) ? rng.int(90, 260) : null,
+    units: type === "multiplex" ? generateUnits(rng, beds, market, startYear) : null,
+    rentalItems: generateRentalItems(rng, type),
+    annualTaxes: roundPrice(marketValue * (market.torontoMltt ? rng.range(0.006, 0.0075) : rng.range(0.008, 0.014))),
     listPrice,
     originalListPrice,
     daysOnMarket,
     priceHistory,
+    spisProvided: rural ? rng.chance(0.6) : rng.chance(0.25),
     extras: typeExtras(rng, type, marketValue),
   };
-
   return { property, marketValue };
 }
 
@@ -326,4 +357,16 @@ export function isoDate(date: Date): string {
 
 export function addDays(iso: string, days: number): string {
   return isoDate(new Date(new Date(`${iso}T12:00:00Z`).getTime() + days * 86_400_000));
+}
+
+/** Adds banking days (Monday to Friday; statutory holidays are ignored in this simulation). */
+export function addBankingDays(iso: string, days: number): string {
+  let date = iso;
+  let added = 0;
+  while (added < days) {
+    date = addDays(date, 1);
+    const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+    if (dow !== 0 && dow !== 6) added++;
+  }
+  return date;
 }

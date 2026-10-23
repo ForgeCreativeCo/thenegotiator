@@ -1,101 +1,126 @@
-// The terms of an offer or counteroffer, and helpers to describe and compare them.
+// The terms of an offer or sign-back, modelled on the structure of the OREA Agreement of Purchase and Sale.
 
 import { z } from "zod";
-import type { LoanType, Scenario } from "../engine/types";
+import type { ConditionKey, Scenario } from "../engine/types";
+import { isCondo } from "../engine/properties";
 import { roundPrice } from "../engine/rng";
-import { LOAN_LABELS, displayDate, money } from "../narrative/format";
+import { FINANCING_LABELS, conditionLabel, displayDate, money } from "../narrative/format";
 
-export const LOAN_TYPES = ["cash", "conventional", "fha", "va", "usda", "jumbo"] as const;
+export const FINANCING_TYPES = ["cash", "insured", "conventional", "alternative"] as const;
+export const CONDITION_KEYS = ["financing", "inspection", "status_certificate", "lawyer_review", "insurance", "sale_of_property", "water_septic"] as const;
 
 export const TermsSchema = z.object({
-  price: z.number().describe("Purchase price in dollars."),
-  earnestMoney: z.number().describe("Earnest money deposit in dollars."),
-  loanType: z.enum(LOAN_TYPES),
+  price: z.number().describe("Purchase price in Canadian dollars."),
+  deposit: z.number().describe("Deposit in dollars, held in the listing brokerage's trust account."),
+  depositTiming: z.enum(["herewith", "upon_acceptance"]).describe("herewith = submitted with the offer; upon_acceptance = within 24 hours of acceptance."),
+  irrevocableHours: z.number().int().describe("Hours the offer stays open for acceptance."),
+  completionDate: z.string().describe("Completion (closing) date, YYYY-MM-DD."),
+  financing: z.enum(FINANCING_TYPES),
   downPaymentPct: z.number(),
-  sellerCredit: z.number().describe("Seller-paid credit toward the buyer's closing costs, in dollars."),
-  closingDate: z.string().describe("ISO date, YYYY-MM-DD."),
-  rentBackDays: z.number().int().describe("Days the seller stays after closing (rent-back). 0 = possession at closing."),
-  inspectionDays: z.number().int().nullable().describe("Inspection or option period in days. null = waived."),
-  appraisal: z.enum(["full", "gap_coverage", "waived"]).describe("full = buyer can renegotiate or cancel if it appraises low; gap_coverage = buyer covers a shortfall up to appraisalGapCoverage; waived = buyer covers any shortfall."),
-  appraisalGapCoverage: z.number().describe("Dollars of appraisal shortfall the buyer will cover. 0 unless appraisal is gap_coverage."),
-  financingDays: z.number().int().nullable().describe("Financing contingency in days. null = waived or cash."),
-  homeSaleContingency: z.boolean().describe("Purchase depends on the buyer selling their current home."),
-  homeWarranty: z.number().describe("Seller-paid home warranty, in dollars. 0 = none."),
-  inclusions: z.string().describe("Personal property that conveys, e.g. 'Refrigerator, washer, dryer'."),
+  conditions: z.array(z.object({ key: z.enum(CONDITION_KEYS), days: z.number().int().describe("Banking days after acceptance to waive or fulfil.") })).describe("Schedule A conditions for the buyer's benefit. An empty list is a firm offer."),
+  chattels: z.string().describe("Chattels included, e.g. 'Fridge, stove, dishwasher, washer, dryer'."),
+  fixturesExcluded: z.string().describe("Fixtures excluded, or 'None'."),
+  rentalItemsBuyout: z.boolean().describe("true = the seller pays out the rental contracts before completion; false = the buyer assumes them."),
+  preClosingVisits: z.number().int().describe("Number of visits the buyer may make before completion, usually 2 or 3."),
   specialTerms: z.array(z.object({ key: z.string(), value: z.string() })).describe("Property-specific terms, keyed by the term keys in the scenario."),
 });
 
 export type Terms = z.infer<typeof TermsSchema>;
+export type TermsCondition = Terms["conditions"][number];
 
-/** A reasonable first offer from the buyer's side, at list price with standard contingencies. */
+/** Conditions that make sense for this property. */
+export function applicableConditions(s: Pick<Scenario, "property">): ConditionKey[] {
+  const keys: ConditionKey[] = ["financing", "inspection"];
+  if (isCondo(s.property.type) || s.property.potlFee) keys.push("status_certificate");
+  if (s.property.water !== "municipal" || s.property.sewer !== "municipal") keys.push("water_septic");
+  keys.push("lawyer_review", "insurance", "sale_of_property");
+  return keys;
+}
+
+export function rentalBuyoutTotal(s: Pick<Scenario, "property">): number {
+  return s.property.rentalItems.reduce((sum, r) => sum + r.buyoutCost, 0);
+}
+
+export function conditionDays(t: Terms, key: ConditionKey): number | null {
+  return t.conditions.find((c) => c.key === key)?.days ?? null;
+}
+
+/** A standard first offer from the buyer's side: list price, typical deposit, standard conditions. */
 export function defaultBuyerTerms(s: Scenario, overrides: Partial<Terms> = {}): Terms {
   const b = s.buyer;
   const price = s.property.listPrice;
+  const conditions: TermsCondition[] = [];
+  if (b.financing !== "cash") conditions.push({ key: "financing", days: 5 });
+  if (s.property.type !== "new_construction") conditions.push({ key: "inspection", days: 5 });
+  if (applicableConditions(s).includes("status_certificate")) conditions.push({ key: "status_certificate", days: 5 });
+  if (applicableConditions(s).includes("water_septic")) conditions.push({ key: "water_septic", days: 7 });
+  if (b.needsSaleCondition) conditions.push({ key: "sale_of_property", days: 30 });
   return {
     price,
-    earnestMoney: roundPrice((price * s.market.customs.typicalEarnestMoneyPct) / 100),
-    loanType: b.loanType,
-    downPaymentPct: b.downPaymentPct,
-    sellerCredit: 0,
-    closingDate: b.idealClose,
-    rentBackDays: 0,
-    inspectionDays: s.property.type === "land" ? 30 : 10,
-    appraisal: b.loanType === "cash" ? "waived" : "full",
-    appraisalGapCoverage: 0,
-    financingDays: b.loanType === "cash" ? null : 21,
-    homeSaleContingency: false,
-    homeWarranty: 0,
-    inclusions: s.property.type === "land" ? "None" : "Refrigerator, range, dishwasher, microwave",
+    deposit: roundPrice((price * s.market.typicalDepositPct) / 100),
+    depositTiming: "upon_acceptance",
+    irrevocableHours: 24,
+    completionDate: b.idealClose,
+    financing: b.financing,
+    downPaymentPct: b.financing === "cash" ? 100 : b.downPaymentPct,
+    conditions,
+    chattels: s.property.type === "vacant_land" ? "None" : "Fridge, stove, dishwasher, washer, dryer, all electrical light fixtures, all window coverings",
+    fixturesExcluded: "None",
+    rentalItemsBuyout: false,
+    preClosingVisits: s.property.type === "vacant_land" ? 0 : 2,
     specialTerms: s.typeSpecificTerms.map((t) => ({ key: t.key, value: "" })),
     ...overrides,
   };
 }
 
-/** Normalizes terms coming from a form or the LLM: rounds money, clears fields that don't apply. */
+/** Normalizes terms from a form or the LLM: rounds money, sorts and de-duplicates conditions. */
 export function normalizeTerms(t: Terms): Terms {
-  const cash = t.loanType === "cash";
+  const seen = new Set<string>();
+  const conditions = t.conditions
+    .filter((c) => (seen.has(c.key) ? false : (seen.add(c.key), true)))
+    .map((c) => ({ key: c.key, days: Math.max(1, Math.round(c.days)) }))
+    .sort((a, b) => CONDITION_KEYS.indexOf(a.key) - CONDITION_KEYS.indexOf(b.key));
   return {
     ...t,
     price: Math.round(t.price),
-    earnestMoney: Math.max(0, Math.round(t.earnestMoney)),
-    downPaymentPct: cash ? 100 : t.downPaymentPct,
-    sellerCredit: Math.max(0, Math.round(t.sellerCredit)),
-    rentBackDays: Math.max(0, Math.round(t.rentBackDays)),
-    inspectionDays: t.inspectionDays === null ? null : Math.max(0, Math.round(t.inspectionDays)),
-    appraisalGapCoverage: t.appraisal === "gap_coverage" ? Math.max(0, Math.round(t.appraisalGapCoverage)) : 0,
-    financingDays: cash || t.financingDays === null ? null : Math.max(0, Math.round(t.financingDays)),
-    homeWarranty: Math.max(0, Math.round(t.homeWarranty)),
-    inclusions: t.inclusions.trim(),
+    deposit: Math.max(0, Math.round(t.deposit)),
+    irrevocableHours: Math.max(1, Math.round(t.irrevocableHours)),
+    downPaymentPct: t.financing === "cash" ? 100 : t.downPaymentPct,
+    conditions: t.financing === "cash" ? conditions.filter((c) => c.key !== "financing") : conditions,
+    chattels: t.chattels.trim() || "None",
+    fixturesExcluded: t.fixturesExcluded.trim() || "None",
+    preClosingVisits: Math.max(0, Math.min(5, Math.round(t.preClosingVisits))),
     specialTerms: t.specialTerms.map((x) => ({ key: x.key, value: x.value.trim() })),
   };
 }
 
 export interface TermLine {
-  key: keyof Terms | `special:${string}`;
+  key: string;
   label: string;
   value: string;
 }
 
-export function describeTerms(t: Terms, s: Pick<Scenario, "market" | "typeSpecificTerms">): TermLine[] {
-  const inspectionLabel = s.market.customs.optionPeriod ? "Option period" : "Inspection";
+type DescribeContext = Pick<Scenario, "typeSpecificTerms" | "property">;
+
+export function describeTerms(t: Terms, s: DescribeContext): TermLine[] {
   const lines: TermLine[] = [
     { key: "price", label: "Price", value: money(t.price) },
-    { key: "earnestMoney", label: "Earnest money", value: money(t.earnestMoney) },
-    { key: "loanType", label: "Financing", value: t.loanType === "cash" ? "Cash" : `${LOAN_LABELS[t.loanType as LoanType]}, ${t.downPaymentPct}% down` },
-    { key: "sellerCredit", label: "Seller credit", value: t.sellerCredit ? money(t.sellerCredit) : "None" },
-    { key: "closingDate", label: "Closing", value: displayDate(t.closingDate) },
-    { key: "rentBackDays", label: "Possession", value: t.rentBackDays ? `${t.rentBackDays}-day rent-back` : "At closing" },
-    { key: "inspectionDays", label: inspectionLabel, value: t.inspectionDays === null ? "Waived" : `${t.inspectionDays} days` },
-    {
-      key: "appraisal",
-      label: "Appraisal",
-      value: t.appraisal === "full" ? "Contingent" : t.appraisal === "waived" ? "Waived" : `Buyer covers gap up to ${money(t.appraisalGapCoverage)}`,
-    },
-    { key: "financingDays", label: "Financing contingency", value: t.loanType === "cash" ? "n/a (cash)" : t.financingDays === null ? "Waived" : `${t.financingDays} days` },
-    { key: "homeSaleContingency", label: "Home sale contingency", value: t.homeSaleContingency ? "Yes" : "No" },
-    { key: "homeWarranty", label: "Home warranty", value: t.homeWarranty ? `${money(t.homeWarranty)}, seller paid` : "None" },
-    { key: "inclusions", label: "Inclusions", value: t.inclusions || "None" },
+    { key: "deposit", label: "Deposit", value: `${money(t.deposit)} ${t.depositTiming === "herewith" ? "herewith" : "upon acceptance"}` },
+    { key: "irrevocable", label: "Irrevocable", value: `${t.irrevocableHours} hours` },
+    { key: "completionDate", label: "Completion", value: displayDate(t.completionDate) },
+    { key: "financing", label: "Buyer's financing", value: t.financing === "cash" ? "Cash" : `${FINANCING_LABELS[t.financing]}, ${t.downPaymentPct}% down` },
   ];
+  for (const key of applicableConditions(s)) {
+    if (key === "financing" && t.financing === "cash") continue;
+    const days = conditionDays(t, key);
+    lines.push({ key: `condition:${key}`, label: `${conditionLabel(key, s.property.type)} condition`, value: days === null ? "None" : `${days} banking days` });
+  }
+  lines.push(
+    { key: "chattels", label: "Chattels included", value: t.chattels },
+    { key: "fixturesExcluded", label: "Fixtures excluded", value: t.fixturesExcluded },
+  );
+  if (s.property.rentalItems.length) lines.push({ key: "rentalItems", label: "Rental items", value: t.rentalItemsBuyout ? `Seller pays out (${money(rentalBuyoutTotal(s))})` : "Buyer assumes" });
+  lines.push({ key: "preClosingVisits", label: "Pre-closing visits", value: String(t.preClosingVisits) });
   for (const term of s.typeSpecificTerms) {
     const value = t.specialTerms.find((x) => x.key === term.key)?.value;
     lines.push({ key: `special:${term.key}`, label: term.label, value: value || "Not addressed" });
@@ -103,19 +128,11 @@ export function describeTerms(t: Terms, s: Pick<Scenario, "market" | "typeSpecif
   return lines;
 }
 
-/** Keys of the lines that differ between two sets of terms. */
-export function changedKeys(before: Terms | null, after: Terms, s: Pick<Scenario, "market" | "typeSpecificTerms">): string[] {
-  if (!before) return [];
-  const a = describeTerms(before, s);
-  const b = describeTerms(after, s);
-  return b.filter((line, i) => line.value !== a[i]?.value).map((line) => line.key);
-}
-
 export function termsEqual(a: Terms, b: Terms): boolean {
   return JSON.stringify(normalizeTerms(a)) === JSON.stringify(normalizeTerms(b));
 }
 
-export function termsSummary(t: Terms, s: Pick<Scenario, "market" | "typeSpecificTerms">): string {
+export function termsSummary(t: Terms, s: DescribeContext): string {
   return describeTerms(t, s)
     .map((l) => `${l.label}: ${l.value}`)
     .join("; ");

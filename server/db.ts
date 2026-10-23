@@ -7,8 +7,8 @@ export interface ScenarioSummary {
   id: string;
   createdAt: string;
   role: Scenario["userRole"];
-  city: string;
-  stateCode: string;
+  region: string;
+  municipality: string;
   propertyType: Scenario["property"]["type"];
   listPrice: number;
   status: NegotiationStatus | "closed" | "terminated";
@@ -60,7 +60,7 @@ export class ScenarioStore {
       .all(limit) as { data: string; status: NegotiationStatus | null; tx_status: string | null }[];
     return rows.map(({ data, status, tx_status }) => {
       const s = JSON.parse(data) as Scenario;
-      return { id: s.id, createdAt: s.createdAt, role: s.userRole, city: s.market.city, stateCode: s.market.stateCode, propertyType: s.property.type, listPrice: s.property.listPrice, status: tx_status === "closed" || tx_status === "terminated" ? tx_status : (status ?? "negotiating") };
+      return { id: s.id, createdAt: s.createdAt, role: s.userRole, region: s.market.region, municipality: s.property.address.municipality, propertyType: s.property.type, listPrice: s.property.listPrice, status: tx_status === "closed" || tx_status === "terminated" ? tx_status : (status ?? "negotiating") };
     });
   }
 }

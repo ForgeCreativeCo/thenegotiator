@@ -50,7 +50,7 @@ describe("Claude opposing agent", () => {
       { internalNote: "hold firm", action: "hold", terms: null, message: "We're not there yet." },
     ]);
     const history: Anthropic.Beta.BetaMessageParam[] = [];
-    const turn = await claudeTurn(s, rec, { userText: "Here's our offer", userTerms, simTime: "Fri", newEvents: [], clientUpdate: null }, history, client);
+    const turn = await claudeTurn(s, rec, { userText: "Here's our offer", userTerms, simTime: "Fri", newEvents: [], clientUpdate: null, competingOffers: 0 }, history, client);
 
     expect(turn.action).toBe("hold");
     expect(turn.issues.join(" ")).toMatch(/won't sign/);
@@ -71,6 +71,6 @@ describe("Claude opposing agent", () => {
     const rec = recommend(s, n);
     const bad = { internalNote: "", action: "accept", terms: null, message: "Deal!" };
     const { client } = fakeClient([bad, bad]);
-    await expect(claudeTurn(s, rec, { userText: "", userTerms, simTime: "Fri", newEvents: [], clientUpdate: null }, [], client)).rejects.toBeInstanceOf(BotError);
+    await expect(claudeTurn(s, rec, { userText: "", userTerms, simTime: "Fri", newEvents: [], clientUpdate: null, competingOffers: 0 }, [], client)).rejects.toBeInstanceOf(BotError);
   });
 });

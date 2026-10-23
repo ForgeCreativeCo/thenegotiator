@@ -1,10 +1,10 @@
-// Client limits and the opposing agent's policy for negotiations after the contract is signed.
+// Client limits and the opposing agent's policy for negotiations after acceptance.
 // The same limits apply to the bot's client and to the user's own client.
 
 import type { Finding, Scenario, Side } from "../engine/types";
 import { addDays } from "../engine/properties";
-import { money } from "../narrative/format";
-import { sellerNet } from "../negotiation/constraints";
+import { displayDate, money } from "../narrative/format";
+import { netPrice } from "../negotiation/constraints";
 import type { Issue, Proposal, Transaction } from "./types";
 
 export function allFindings(s: Scenario): Finding[] {
@@ -16,8 +16,8 @@ export function midCost(f: Finding): number {
 }
 
 /**
- * What the findings in a repair issue are realistically worth to the buyer. Findings with no repair cost
- * (a pending lawsuit, a construction delay, an underfunded HOA) are valued as a risk discount on the price.
+ * What findings are realistically worth to the buyer. Findings with no repair cost
+ * (a lawsuit against the condo corporation, a Tarion delay, a below-market tenant) are valued as a risk discount.
  */
 export function repairReference(findings: Finding[], price: number): number {
   const weight = { minor: 0.3, moderate: 1, major: 1, safety: 1 } as const;
@@ -26,44 +26,49 @@ export function repairReference(findings: Finding[], price: number): number {
   return Math.round(total / 250) * 250;
 }
 
-const MONEY_KINDS = new Set(["repairs", "appraisal", "title", "walkthrough"]);
+const MONEY_KINDS = new Set(["repairs", "appraisal", "title", "visit"]);
+const DATE_KINDS = new Set(["extension", "date_change"]);
 
-export function isMoneyIssue(issue: Issue): boolean {
+export function isMoneyIssue(issue: Pick<Issue, "kind">): boolean {
   return MONEY_KINDS.has(issue.kind);
+}
+
+export function isDateIssue(issue: Pick<Issue, "kind">): boolean {
+  return DATE_KINDS.has(issue.kind);
 }
 
 export function agreedAmount(issue: Issue): number {
   if (issue.status !== "agreed") return 0;
-  const accepted = [...issue.proposals].reverse().find((p) => p.kind === "accept");
-  return accepted?.amount ?? 0;
+  return [...issue.proposals].reverse().find((p) => p.kind === "accept")?.amount ?? 0;
 }
 
-/** Dollars the seller has already given in post-contract amendments, excluding one issue. */
+/** Dollars the seller has already given in amendments, excluding one issue. */
 export function sellerGiven(tx: Transaction, excludeIssueId?: string): number {
   return tx.issues.filter((i) => isMoneyIssue(i) && i.id !== excludeIssueId).reduce((sum, i) => sum + agreedAmount(i), 0);
 }
 
 /**
- * The most a seller will give back in total after the contract to keep the deal together.
- * Real defects and a low appraisal reset what the house is worth, so sellers bend past their original floor for them.
+ * The most a seller will give back in total after acceptance to keep the deal together.
+ * Real defects and a low lender appraisal reset what the house is worth, so sellers bend past their original floor for them.
  */
 export function sellerGiveLimit(s: Scenario, tx: Transaction): number {
-  const room = Math.max(0, sellerNet(tx.originalTerms) - s.seller.reservationPrice);
-  const weights = { repairs: 0.6, appraisal: 0.6, title: 0.5, walkthrough: 1 } as const;
+  const room = Math.max(0, netPrice(s, tx.originalTerms) - s.seller.reservationPrice);
+  const weights = { repairs: 0.6, appraisal: 0.6, title: 0.5, visit: 1 } as const;
   let fromIssues = 0;
   for (const issue of tx.issues) if (isMoneyIssue(issue)) fromIssues += issue.reference * weights[issue.kind as keyof typeof weights];
   const backupFactor = tx.backupOffer ? 0.7 : 1;
-  return Math.round(((room + fromIssues) * backupFactor) / 250) * 250;
+  // A seller can't concede past their equity: they still have to discharge the mortgage and pay closing costs.
+  const equityCap = Math.max(0, netPrice(s, tx.originalTerms) - s.seller.mortgagePayoff - tx.originalTerms.price * 0.03);
+  return Math.round(Math.min((room + fromIssues) * backupFactor, equityCap) / 250) * 250;
 }
 
 export function sellerRemaining(s: Scenario, tx: Transaction, issue: Issue): number {
   return Math.max(0, sellerGiveLimit(s, tx) - sellerGiven(tx, issue.id));
 }
 
-/** Extra cash the buyer can bring to cover an appraisal shortfall. */
-export function buyerGapAbility(s: Scenario, tx: Transaction): number {
-  const contractCoverage = tx.originalTerms.appraisal === "gap_coverage" ? tx.originalTerms.appraisalGapCoverage : 0;
-  return Math.min(s.buyer.cashReserves, Math.max(contractCoverage, s.buyer.maxAppraisalGapCoverage));
+/** Extra cash the buyer can bring to cover a low lender appraisal. */
+export function buyerGapAbility(s: Scenario): number {
+  return Math.min(s.buyer.cashReserves, s.buyer.maxAppraisalGapCoverage);
 }
 
 export function latestCloseLimit(s: Scenario, side: Side): string {
@@ -71,22 +76,23 @@ export function latestCloseLimit(s: Scenario, side: Side): string {
 }
 
 /** Problems with the user's client signing off on this proposal or acceptance. Empty = OK. */
-export function userClientObjections(s: Scenario, tx: Transaction, issue: Issue, side: Side, amount: number, closingDate: string | null): string[] {
+export function userClientObjections(s: Scenario, tx: Transaction, issue: Pick<Issue, "kind" | "id">, side: Side, amount: number, closingDate: string | null): string[] {
   const problems: string[] = [];
   if (isMoneyIssue(issue) && side === "seller") {
     const limit = sellerGiveLimit(s, tx);
     const given = sellerGiven(tx, issue.id);
-    if (given + amount > limit) problems.push(`Your sellers will give at most ${money(limit)} in total after the contract to keep this deal together${given ? ` (${money(given)} is already agreed)` : ""}.`);
+    if (given + amount > limit) problems.push(`Your sellers will give at most ${money(limit)} in total after acceptance to keep this deal together${given ? ` (${money(given)} is already agreed)` : ""}.`);
   }
   if (issue.kind === "appraisal" && side === "buyer") {
     const gapLeft = Math.max(0, tx.terms.price - amount - (tx.appraisedValue ?? tx.terms.price));
-    const ability = buyerGapAbility(s, tx);
+    const ability = buyerGapAbility(s);
     if (gapLeft > ability) problems.push(`That leaves your buyers covering ${money(gapLeft)} of the shortfall in cash; they can bring at most ${money(ability)}.`);
   }
+  if (issue.kind === "condition_extension" && side === "seller" && s.seller.boughtElsewhere && amount > 3) problems.push("Your sellers have bought firm elsewhere and won't give more than 3 extra banking days.");
   if (closingDate) {
     const limit = latestCloseLimit(s, side);
-    if (closingDate > limit) problems.push(`Your ${side === "seller" ? "sellers" : "buyers"} can't close later than ${limit}.`);
-    if (closingDate <= addDays(tx.effectiveDate, tx.day + 2)) problems.push("That closing date is too soon to be workable.");
+    if (closingDate > limit) problems.push(`Your ${side === "seller" ? "sellers" : "buyers"} can't complete later than ${displayDate(limit)}.`);
+    if (closingDate <= addDays(tx.effectiveDate, tx.day + 2)) problems.push("That completion date is too soon to be workable.");
   }
   return problems;
 }
@@ -111,11 +117,7 @@ function lastBy(issue: Issue, side: Side): Proposal | null {
   return [...issue.proposals].reverse().find((p) => p.by === side) ?? null;
 }
 
-function defaultForm(issue: Issue): Proposal["form"] {
-  if (issue.kind === "appraisal") return "price_reduction";
-  if (isMoneyIssue(issue)) return "credit";
-  return null;
-}
+const move = (kind: BotMove["kind"], reasoning: string, extra: Partial<BotMove> = {}): BotMove => ({ kind, amount: 0, closingDate: null, form: null, reasoning, ...extra });
 
 /** What the bot asks for when it is the requester and makes the first move. */
 export function botOpeningRequest(s: Scenario, tx: Transaction, issue: Issue, clientNote: string | null): BotMove {
@@ -123,86 +125,82 @@ export function botOpeningRequest(s: Scenario, tx: Transaction, issue: Issue, cl
   switch (issue.kind) {
     case "repairs":
     case "title":
-    case "walkthrough":
-      return { kind: "request", amount: round250(issue.reference * (issue.kind === "walkthrough" ? 1 : factor)), closingDate: null, form: "credit", reasoning: `Ask for about ${money(issue.reference * factor)} against an estimated ${money(issue.reference)}.` };
+      // Nobody credibly asks for more than about 30% of the price; past that, buyers walk instead.
+      return move("request", `Ask for about ${money(Math.min(issue.reference * factor, tx.terms.price * 0.3))} against an estimated ${money(issue.reference)}, before waiving the condition.`, { amount: round250(Math.min(issue.reference * factor, tx.terms.price * 0.3)), form: "price_reduction" });
+    case "visit":
+      return move("request", "Ask for the cost of putting things right, as a credit on closing.", { amount: issue.reference, form: "credit" });
     case "appraisal":
-      return { kind: "request", amount: issue.reference, closingDate: null, form: "price_reduction", reasoning: "Ask the seller to bring the price down to the appraised value." };
+      return move("request", "Ask the seller to bring the price down to the appraised value.", { amount: issue.reference, form: "price_reduction" });
     case "extension":
-      return { kind: "request", amount: 0, closingDate: issue.neededDate, form: null, reasoning: "Ask for the extension needed to close." };
     case "date_change":
-    case "possession":
-      return { kind: "request", amount: issue.reference, closingDate: issue.neededDate, form: null, reasoning: "Pass along the client's request." };
+      return move("request", "Ask for the completion date we need.", { closingDate: issue.neededDate });
+    case "condition_extension":
+      return move("request", "Ask for a few more banking days on the condition.", { amount: issue.reference });
     case "loan":
-      return { kind: "terminate", amount: 0, closingDate: null, form: null, reasoning: "The loan is dead and the financing contingency is still active. Terminate and get the earnest money back." };
-    case "kickout":
-      return { kind: "request", amount: 0, closingDate: null, form: null, reasoning: "Notify the buyer they must remove the home-sale contingency or release the contract." };
+      return move("terminate", "The mortgage is declined and the financing condition is still open. Let it fail so the deposit comes back.");
+    case "escape_clause":
+      return move("request", "Give notice under the escape clause: the buyer has 72 hours to waive the sale-of-property condition.");
   }
 }
 
 /** The bot's reply when the user has made the latest move on an issue. */
-export function botRespond(s: Scenario, tx: Transaction, issue: Issue, botSide: Side, clientNote: string | null, canTerminate: boolean): BotMove {
+export function botRespond(s: Scenario, tx: Transaction, issue: Issue, botSide: Side, clientNote: string | null, canLetConditionFail: boolean): BotMove {
   const userSide: Side = botSide === "seller" ? "buyer" : "seller";
   const theirs = lastBy(issue, userSide);
   const mine = lastBy(issue, botSide);
   const myCount = issue.proposals.filter((p) => p.by === botSide && p.kind !== "accept").length;
-  const pace = s.difficulty.concessionPace;
-  const wait = (reasoning: string): BotMove => ({ kind: "wait", amount: 0, closingDate: null, form: null, reasoning });
-  if (!theirs) return wait("Nothing new to respond to.");
+  if (!theirs) return move("wait", "Nothing new to respond to.");
 
-  // ---- Date issues ----
-  if (issue.kind === "extension" || issue.kind === "date_change") {
+  if (isDateIssue(issue)) {
     if (issue.requester === botSide) {
-      if (theirs.kind === "reject") return wait("They refused the date change. Nothing more to do but see what happens at closing.");
+      if (theirs.kind === "reject") return move("wait", "They refused the date change. Nothing more to do but see what happens at completion.");
       const ok = theirs.closingDate && (!issue.neededDate || theirs.closingDate >= issue.neededDate);
-      return ok ? { kind: "accept", amount: 0, closingDate: theirs.closingDate, form: null, reasoning: "Their date works." } : { kind: "reject", amount: 0, closingDate: null, form: null, reasoning: "Their date doesn't give us enough time." };
+      return ok ? move("accept", "Their date works.", { closingDate: theirs.closingDate }) : move("reject", "Their date doesn't give us enough time.");
     }
     const limit = addDays(botSide === "seller" ? s.seller.latestClose : s.buyer.latestClose, 10);
-    if (theirs.closingDate && theirs.closingDate <= limit) return { kind: "accept", amount: 0, closingDate: theirs.closingDate, form: null, reasoning: "The new date is inside what my client can live with." };
-    if (myCount === 0 && limit > tx.terms.closingDate) return { kind: "counter", amount: 0, closingDate: limit, form: null, reasoning: "Offer the latest date my client can accept." };
-    return { kind: "reject", amount: 0, closingDate: null, form: null, reasoning: "My client can't push closing that far." };
+    if (theirs.closingDate && theirs.closingDate <= limit) return move("accept", "The new date is inside what my client can live with.", { closingDate: theirs.closingDate });
+    if (myCount === 0 && limit > tx.terms.completionDate) return move("counter", "Offer the latest date my client can accept.", { closingDate: limit });
+    return move("reject", "My client can't move completion that far.");
   }
 
-  if (issue.kind === "possession") {
-    if (issue.requester === botSide) return theirs.kind === "reject" ? { kind: "withdraw", amount: 0, closingDate: null, form: null, reasoning: "They said no; drop it." } : { kind: "accept", amount: theirs.amount, closingDate: null, form: null, reasoning: "Take what they offer." };
-    const tolerance = s.buyer.urgency >= 4 ? 3 : 10;
-    if (theirs.amount <= tolerance) return { kind: "accept", amount: theirs.amount, closingDate: null, form: null, reasoning: "A short rent-back is fine." };
-    if (myCount === 0) return { kind: "counter", amount: tolerance, closingDate: null, form: null, reasoning: `My buyers can live with ${tolerance} days at most.` };
-    return { kind: "reject", amount: 0, closingDate: null, form: null, reasoning: "Too long." };
+  if (issue.kind === "condition_extension") {
+    if (issue.requester === botSide) return theirs.kind === "reject" ? move("wait", "They won't extend. We'll have to decide on the condition by the deadline.") : move("accept", "Take the extra time.", { amount: theirs.amount });
+    const cap = s.seller.boughtElsewhere || tx.backupOffer ? 2 : s.seller.maxConditionDays;
+    if (theirs.amount <= cap) return move("accept", "A short extension keeps the deal alive.", { amount: theirs.amount });
+    if (myCount === 0) return move("counter", `My seller can give ${cap} banking days at most.`, { amount: cap });
+    return move("reject", "No more time.");
   }
 
-  if (issue.kind === "kickout") {
-    // The bot is the buyer here; user is the seller who sent the notice.
-    const canRemove = s.buyer.homeToSell?.status === "under_contract" || !s.buyer.homeToSell;
-    return canRemove ? { kind: "accept", amount: 0, closingDate: null, form: null, reasoning: "Our sale is firm enough; remove the contingency and stay in the deal." } : { kind: "terminate", amount: 0, closingDate: null, form: null, reasoning: "We can't remove the contingency without our sale being firm; release the contract." };
+  if (issue.kind === "escape_clause") {
+    // The bot is the buyer; the user (seller) gave notice.
+    return tx.buyerHomeSold
+      ? move("accept", "Our sale is firm; waive the condition and stay in the deal.")
+      : move("terminate", "We can't waive the sale condition until our home sells, so the agreement ends and the deposit comes back.");
   }
 
   // ---- Money issues ----
   if (botSide === "seller") {
-    // Bot is the seller responding to the buyer's request.
     const ask = theirs.amount;
     const rem = sellerRemaining(s, tx, issue);
-    const upset = issue.kind === "repairs" && clientNote && /offended|threatens/i.test(clientNote) && myCount === 0;
-    if (upset) return { kind: "reject", amount: 0, closingDate: null, form: null, reasoning: "My seller took the request personally. Push back hard first." };
-    if (rem <= 0) return { kind: "reject", amount: 0, closingDate: null, form: null, reasoning: "My seller has nothing left to give. It's as-is." };
-    if (ask <= rem && (ask <= rem * 0.5 || ask <= issue.reference * 0.5)) return { kind: "accept", amount: ask, closingDate: null, form: theirs.form, reasoning: "A reasonable request we can absorb. Take it and keep the deal together." };
-    if (myCount >= 3) return ask <= rem * 0.8 ? { kind: "accept", amount: ask, closingDate: null, form: theirs.form, reasoning: "We've gone back and forth enough; this is within reach." } : { kind: "reject", amount: 0, closingDate: null, form: null, reasoning: "Final answer. My seller won't go further." };
-    const counter = round250(Math.min(rem, mine && mine.kind !== "reject" ? (mine.amount + ask) / 2 : ask * (0.35 + 0.35 * pace)));
-    if (counter >= ask * 0.95 && ask <= rem) return { kind: "accept", amount: ask, closingDate: null, form: theirs.form, reasoning: "We're close enough to accept." };
-    return { kind: "counter", amount: counter, closingDate: null, form: theirs.form ?? defaultForm(issue), reasoning: `Counter at ${money(counter)}; my seller's remaining room is limited.` };
+    if (issue.kind === "repairs" && clientNote && /offended|relist/i.test(clientNote) && myCount === 0) return move("reject", "My seller took the request personally. Push back hard first.");
+    if (rem <= 0) return move("reject", "My seller has nothing left to give. It's as-is.");
+    if (ask <= rem && (ask <= rem * 0.5 || ask <= issue.reference * 0.5)) return move("accept", "A reasonable request we can absorb. Keep the deal together.", { amount: ask, form: theirs.form });
+    if (myCount >= 3) return ask <= rem * 0.8 ? move("accept", "We've gone back and forth enough; this is within reach.", { amount: ask, form: theirs.form }) : move("reject", "Final answer. My seller won't go further.");
+    const counter = round250(Math.min(rem, mine && mine.kind !== "reject" ? (mine.amount + ask) / 2 : ask * (0.35 + 0.35 * s.difficulty.concessionPace)));
+    if (counter >= ask * 0.95 && ask <= rem) return move("accept", "We're close enough to accept.", { amount: ask, form: theirs.form });
+    return move("counter", `Counter at ${money(counter)}; my seller's room is limited.`, { amount: counter, form: theirs.form ?? "price_reduction" });
   }
 
-  // Bot is the buyer; the user (seller) countered or refused its request.
-  const ability = buyerGapAbility(s, tx);
-  const need =
-    issue.kind === "appraisal" ? Math.max(0, issue.reference - ability) : round250(issue.reference * (issue.kind === "repairs" ? 0.6 : issue.kind === "title" ? 0.5 : 0.6) * (clientNote && /cold feet/i.test(clientNote) ? 1.4 : 1));
+  // Bot is the buyer; the user (seller) countered or refused.
+  const ability = buyerGapAbility(s);
+  const need = issue.kind === "appraisal" ? Math.max(0, issue.reference - ability) : round250(issue.reference * (issue.kind === "title" ? 0.5 : 0.6) * (clientNote && /cold feet/i.test(clientNote) ? 1.4 : 1));
   const offered = theirs.kind === "reject" ? 0 : theirs.amount;
-  if (offered >= need) return { kind: "accept", amount: offered, closingDate: null, form: theirs.form, reasoning: "That covers what my buyers need." };
-  const final = theirs.kind === "reject" || myCount >= 3;
-  if (final) {
-    if (offered >= need * 0.75) return offered > 0 ? { kind: "accept", amount: offered, closingDate: null, form: theirs.form, reasoning: "Not everything we wanted, but enough to move forward." } : { kind: "withdraw", amount: 0, closingDate: null, form: null, reasoning: "We'll proceed without it." };
-    if (canTerminate) return { kind: "terminate", amount: 0, closingDate: null, form: null, reasoning: `The seller won't cover enough (${money(offered)} against the ${money(need)} my buyers need) and we still have the right to walk.` };
-    return offered > 0 ? { kind: "accept", amount: offered, closingDate: null, form: theirs.form, reasoning: "No right to walk anymore; take what's offered." } : { kind: "withdraw", amount: 0, closingDate: null, form: null, reasoning: "No right to walk anymore; proceed." };
+  if (offered >= need) return move("accept", "That covers what my buyers need.", { amount: offered, form: theirs.form });
+  if (theirs.kind === "reject" || myCount >= 3) {
+    if (offered >= need * 0.75) return offered > 0 ? move("accept", "Not everything we wanted, but enough to waive and move on.", { amount: offered, form: theirs.form }) : move("withdraw", "We'll proceed without it.");
+    if (canLetConditionFail) return move("terminate", `The seller won't cover enough (${money(offered)} against the ${money(need)} my buyers need), and the condition is still open. Let it fail.`);
+    return offered > 0 ? move("accept", "No condition left to rely on; take what's offered.", { amount: offered, form: theirs.form }) : move("withdraw", "No condition left to rely on; proceed.");
   }
-  const counter = round250(mine && mine.kind !== "reject" ? (mine.amount + offered) / 2 : (need + offered) / 2);
-  return { kind: "counter", amount: Math.max(counter, need), closingDate: null, form: mine?.form ?? defaultForm(issue), reasoning: `Counter at ${money(Math.max(counter, need))}; my buyers need at least ${money(need)}.` };
+  const counter = Math.max(need, round250(mine && mine.kind !== "reject" ? (mine.amount + offered) / 2 : (need + offered) / 2));
+  return move("counter", `Counter at ${money(counter)}; my buyers need at least ${money(need)}.`, { amount: counter, form: mine?.form ?? "price_reduction" });
 }

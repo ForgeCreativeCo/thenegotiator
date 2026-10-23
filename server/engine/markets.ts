@@ -1,91 +1,87 @@
-import type { ClosingCustom, Market, MarketTemperature, MetroType } from "./types";
+import type { Market, MarketTemperature, RegionKind } from "./types";
 import { Rng } from "./rng";
 
 interface Region {
-  city: string;
-  state: string;
-  stateCode: string;
-  metroType: MetroType;
-  medianPrice: number;
-  zipPrefix: string;
-  closing: ClosingCustom;
-  optionPeriod?: boolean;
-  caveatEmptor?: boolean;
-  transferTaxPct: number;
-  whoPaysTransferTax: "seller" | "buyer" | "split";
+  region: string;
+  municipality: string;
+  kind: RegionKind;
+  /** Illustrative 2026 benchmark for a detached home, CAD. */
+  benchmark: number;
+  weight: number;
+  fsas: string[]; // postal code forward sortation areas
+  depositPct: number;
 }
 
-// Fictionalized but plausible regional price levels and closing customs.
+// Weighted toward the GTA, with regular Ottawa, Southwestern Ontario, cottage country and the North.
 const REGIONS: Region[] = [
-  { city: "Austin", state: "Texas", stateCode: "TX", metroType: "urban", medianPrice: 520_000, zipPrefix: "787", closing: "title_company", optionPeriod: true, transferTaxPct: 0, whoPaysTransferTax: "seller" },
-  { city: "New Braunfels", state: "Texas", stateCode: "TX", metroType: "suburban", medianPrice: 390_000, zipPrefix: "781", closing: "title_company", optionPeriod: true, transferTaxPct: 0, whoPaysTransferTax: "seller" },
-  { city: "Phoenix", state: "Arizona", stateCode: "AZ", metroType: "urban", medianPrice: 450_000, zipPrefix: "850", closing: "escrow", transferTaxPct: 0, whoPaysTransferTax: "split" },
-  { city: "Prescott", state: "Arizona", stateCode: "AZ", metroType: "rural", medianPrice: 560_000, zipPrefix: "863", closing: "escrow", transferTaxPct: 0, whoPaysTransferTax: "split" },
-  { city: "Sacramento", state: "California", stateCode: "CA", metroType: "suburban", medianPrice: 560_000, zipPrefix: "958", closing: "escrow", transferTaxPct: 0.11, whoPaysTransferTax: "seller" },
-  { city: "San Diego", state: "California", stateCode: "CA", metroType: "urban", medianPrice: 950_000, zipPrefix: "921", closing: "escrow", transferTaxPct: 0.11, whoPaysTransferTax: "seller" },
-  { city: "Boise", state: "Idaho", stateCode: "ID", metroType: "suburban", medianPrice: 500_000, zipPrefix: "837", closing: "title_company", transferTaxPct: 0, whoPaysTransferTax: "seller" },
-  { city: "Denver", state: "Colorado", stateCode: "CO", metroType: "urban", medianPrice: 610_000, zipPrefix: "802", closing: "title_company", transferTaxPct: 0.01, whoPaysTransferTax: "buyer" },
-  { city: "Bend", state: "Oregon", stateCode: "OR", metroType: "suburban", medianPrice: 720_000, zipPrefix: "977", closing: "escrow", transferTaxPct: 0, whoPaysTransferTax: "split" },
-  { city: "Spokane", state: "Washington", stateCode: "WA", metroType: "suburban", medianPrice: 420_000, zipPrefix: "992", closing: "escrow", transferTaxPct: 1.28, whoPaysTransferTax: "seller" },
-  { city: "Minneapolis", state: "Minnesota", stateCode: "MN", metroType: "urban", medianPrice: 340_000, zipPrefix: "554", closing: "title_company", transferTaxPct: 0.33, whoPaysTransferTax: "seller" },
-  { city: "Columbus", state: "Ohio", stateCode: "OH", metroType: "suburban", medianPrice: 300_000, zipPrefix: "432", closing: "title_company", transferTaxPct: 0.4, whoPaysTransferTax: "seller" },
-  { city: "Indianapolis", state: "Indiana", stateCode: "IN", metroType: "suburban", medianPrice: 280_000, zipPrefix: "462", closing: "title_company", transferTaxPct: 0, whoPaysTransferTax: "seller" },
-  { city: "Kansas City", state: "Missouri", stateCode: "MO", metroType: "urban", medianPrice: 290_000, zipPrefix: "641", closing: "title_company", caveatEmptor: true, transferTaxPct: 0, whoPaysTransferTax: "seller" },
-  { city: "Nashville", state: "Tennessee", stateCode: "TN", metroType: "urban", medianPrice: 470_000, zipPrefix: "372", closing: "title_company", transferTaxPct: 0.37, whoPaysTransferTax: "buyer" },
-  { city: "Huntsville", state: "Alabama", stateCode: "AL", metroType: "suburban", medianPrice: 330_000, zipPrefix: "358", closing: "title_company", caveatEmptor: true, transferTaxPct: 0.1, whoPaysTransferTax: "buyer" },
-  { city: "Atlanta", state: "Georgia", stateCode: "GA", metroType: "urban", medianPrice: 420_000, zipPrefix: "303", closing: "attorney", optionPeriod: true, transferTaxPct: 0.1, whoPaysTransferTax: "seller" },
-  { city: "Charleston", state: "South Carolina", stateCode: "SC", metroType: "suburban", medianPrice: 540_000, zipPrefix: "294", closing: "attorney", transferTaxPct: 0.37, whoPaysTransferTax: "seller" },
-  { city: "Asheville", state: "North Carolina", stateCode: "NC", metroType: "rural", medianPrice: 480_000, zipPrefix: "288", closing: "attorney", optionPeriod: true, transferTaxPct: 0.2, whoPaysTransferTax: "seller" },
-  { city: "Tampa", state: "Florida", stateCode: "FL", metroType: "urban", medianPrice: 420_000, zipPrefix: "336", closing: "title_company", transferTaxPct: 0.7, whoPaysTransferTax: "seller" },
-  { city: "Ocala", state: "Florida", stateCode: "FL", metroType: "rural", medianPrice: 310_000, zipPrefix: "344", closing: "title_company", transferTaxPct: 0.7, whoPaysTransferTax: "seller" },
-  { city: "Richmond", state: "Virginia", stateCode: "VA", metroType: "suburban", medianPrice: 400_000, zipPrefix: "232", closing: "attorney", caveatEmptor: true, transferTaxPct: 0.33, whoPaysTransferTax: "split" },
-  { city: "Philadelphia", state: "Pennsylvania", stateCode: "PA", metroType: "urban", medianPrice: 290_000, zipPrefix: "191", closing: "title_company", transferTaxPct: 4.28, whoPaysTransferTax: "split" },
-  { city: "Hartford", state: "Connecticut", stateCode: "CT", metroType: "suburban", medianPrice: 360_000, zipPrefix: "061", closing: "attorney", transferTaxPct: 1.25, whoPaysTransferTax: "seller" },
-  { city: "Brooklyn", state: "New York", stateCode: "NY", metroType: "urban", medianPrice: 1_050_000, zipPrefix: "112", closing: "attorney", transferTaxPct: 1.825, whoPaysTransferTax: "seller" },
-  { city: "Portland", state: "Maine", stateCode: "ME", metroType: "suburban", medianPrice: 510_000, zipPrefix: "041", closing: "attorney", transferTaxPct: 0.44, whoPaysTransferTax: "split" },
-  { city: "Bozeman", state: "Montana", stateCode: "MT", metroType: "rural", medianPrice: 820_000, zipPrefix: "597", closing: "title_company", transferTaxPct: 0, whoPaysTransferTax: "seller" },
-  { city: "Albuquerque", state: "New Mexico", stateCode: "NM", metroType: "suburban", medianPrice: 340_000, zipPrefix: "871", closing: "title_company", transferTaxPct: 0, whoPaysTransferTax: "seller" },
-  { city: "Salt Lake City", state: "Utah", stateCode: "UT", metroType: "urban", medianPrice: 560_000, zipPrefix: "841", closing: "title_company", caveatEmptor: true, transferTaxPct: 0, whoPaysTransferTax: "seller" },
-  { city: "Des Moines", state: "Iowa", stateCode: "IA", metroType: "suburban", medianPrice: 250_000, zipPrefix: "503", closing: "attorney", transferTaxPct: 0.16, whoPaysTransferTax: "seller" },
+  { region: "Toronto (East York)", municipality: "Toronto", kind: "toronto", benchmark: 1_350_000, weight: 4, fsas: ["M4C", "M4G", "M4J"], depositPct: 5 },
+  { region: "Toronto (Etobicoke)", municipality: "Toronto", kind: "toronto", benchmark: 1_300_000, weight: 3, fsas: ["M8V", "M9A", "M8Y"], depositPct: 5 },
+  { region: "Toronto (Scarborough)", municipality: "Toronto", kind: "toronto", benchmark: 1_150_000, weight: 3, fsas: ["M1E", "M1K", "M1P"], depositPct: 5 },
+  { region: "Toronto (Downtown)", municipality: "Toronto", kind: "toronto", benchmark: 1_700_000, weight: 3, fsas: ["M5A", "M5V", "M6J"], depositPct: 5 },
+  { region: "Toronto (North York)", municipality: "Toronto", kind: "toronto", benchmark: 1_600_000, weight: 3, fsas: ["M2N", "M3B", "M2M"], depositPct: 5 },
+  { region: "Mississauga", municipality: "Mississauga", kind: "gta", benchmark: 1_250_000, weight: 3, fsas: ["L5B", "L5M", "L4Z"], depositPct: 5 },
+  { region: "Brampton", municipality: "Brampton", kind: "gta", benchmark: 1_050_000, weight: 3, fsas: ["L6P", "L6R", "L7A"], depositPct: 5 },
+  { region: "Oakville", municipality: "Oakville", kind: "gta", benchmark: 1_600_000, weight: 2, fsas: ["L6H", "L6J", "L6M"], depositPct: 5 },
+  { region: "Vaughan", municipality: "Vaughan", kind: "gta", benchmark: 1_450_000, weight: 2, fsas: ["L4H", "L4J", "L6A"], depositPct: 5 },
+  { region: "Markham", municipality: "Markham", kind: "gta", benchmark: 1_450_000, weight: 2, fsas: ["L3P", "L6B", "L6C"], depositPct: 5 },
+  { region: "Richmond Hill", municipality: "Richmond Hill", kind: "gta", benchmark: 1_500_000, weight: 1.5, fsas: ["L4B", "L4C", "L4S"], depositPct: 5 },
+  { region: "Durham (Whitby)", municipality: "Whitby", kind: "gta", benchmark: 900_000, weight: 2, fsas: ["L1M", "L1N", "L1R"], depositPct: 4 },
+  { region: "Durham (Oshawa)", municipality: "Oshawa", kind: "gta", benchmark: 780_000, weight: 2, fsas: ["L1G", "L1H", "L1K"], depositPct: 4 },
+  { region: "Hamilton", municipality: "Hamilton", kind: "city", benchmark: 800_000, weight: 2.5, fsas: ["L8L", "L8M", "L9A"], depositPct: 3 },
+  { region: "Burlington", municipality: "Burlington", kind: "gta", benchmark: 1_150_000, weight: 1.5, fsas: ["L7L", "L7M", "L7R"], depositPct: 5 },
+  { region: "Kitchener-Waterloo", municipality: "Kitchener", kind: "city", benchmark: 780_000, weight: 2, fsas: ["N2H", "N2L", "N2M"], depositPct: 3 },
+  { region: "Guelph", municipality: "Guelph", kind: "city", benchmark: 850_000, weight: 1, fsas: ["N1E", "N1G", "N1H"], depositPct: 3 },
+  { region: "Ottawa", municipality: "Ottawa", kind: "city", benchmark: 720_000, weight: 3, fsas: ["K1S", "K2G", "K1V"], depositPct: 3 },
+  { region: "London", municipality: "London", kind: "city", benchmark: 620_000, weight: 2, fsas: ["N5V", "N6C", "N6G"], depositPct: 3 },
+  { region: "Windsor", municipality: "Windsor", kind: "city", benchmark: 560_000, weight: 1.5, fsas: ["N8W", "N9A", "N9G"], depositPct: 3 },
+  { region: "Niagara (St. Catharines)", municipality: "St. Catharines", kind: "small_city", benchmark: 650_000, weight: 1.5, fsas: ["L2M", "L2N", "L2T"], depositPct: 3 },
+  { region: "Barrie", municipality: "Barrie", kind: "small_city", benchmark: 800_000, weight: 1.5, fsas: ["L4M", "L4N"], depositPct: 3 },
+  { region: "Kingston", municipality: "Kingston", kind: "small_city", benchmark: 620_000, weight: 1, fsas: ["K7K", "K7L", "K7M"], depositPct: 3 },
+  { region: "Peterborough", municipality: "Peterborough", kind: "small_city", benchmark: 650_000, weight: 1, fsas: ["K9H", "K9J", "K9K"], depositPct: 3 },
+  { region: "Prince Edward County", municipality: "Picton", kind: "cottage", benchmark: 750_000, weight: 0.7, fsas: ["K0K"], depositPct: 3 },
+  { region: "Muskoka", municipality: "Bracebridge", kind: "cottage", benchmark: 1_000_000, weight: 1, fsas: ["P1L", "P1H", "P0B"], depositPct: 3 },
+  { region: "Haliburton", municipality: "Minden Hills", kind: "cottage", benchmark: 800_000, weight: 0.6, fsas: ["K0M"], depositPct: 3 },
+  { region: "Collingwood and Blue Mountains", municipality: "Collingwood", kind: "cottage", benchmark: 950_000, weight: 0.7, fsas: ["L9Y"], depositPct: 3 },
+  { region: "Greater Sudbury", municipality: "Sudbury", kind: "north", benchmark: 450_000, weight: 0.8, fsas: ["P3A", "P3E", "P3N"], depositPct: 2 },
+  { region: "Thunder Bay", municipality: "Thunder Bay", kind: "north", benchmark: 380_000, weight: 0.6, fsas: ["P7A", "P7B", "P7C"], depositPct: 2 },
+  { region: "Sault Ste. Marie", municipality: "Sault Ste. Marie", kind: "north", benchmark: 320_000, weight: 0.4, fsas: ["P6A", "P6B", "P6C"], depositPct: 2 },
+  { region: "North Bay", municipality: "North Bay", kind: "north", benchmark: 450_000, weight: 0.4, fsas: ["P1A", "P1B", "P1C"], depositPct: 2 },
 ];
 
 const TEMPERATURE_STATS: Record<MarketTemperature, { dom: [number, number]; ratio: [number, number]; inventory: [number, number] }> = {
-  hot: { dom: [5, 18], ratio: [1.01, 1.06], inventory: [0.8, 2.2] },
-  balanced: { dom: [20, 45], ratio: [0.975, 1.005], inventory: [3.5, 5.5] },
-  cold: { dom: [55, 120], ratio: [0.92, 0.97], inventory: [6.5, 11] },
+  hot: { dom: [5, 14], ratio: [1.01, 1.08], inventory: [0.8, 2] },
+  balanced: { dom: [18, 35], ratio: [0.975, 1.005], inventory: [3, 5] },
+  cold: { dom: [40, 90], ratio: [0.93, 0.97], inventory: [5.5, 9] },
 };
 
 export function generateMarket(rng: Rng): Market {
-  const region = rng.pick(REGIONS);
+  const region = rng.weighted(REGIONS.map((r) => [r, r.weight] as const));
   const temperature = rng.weighted<MarketTemperature>([
-    ["hot", 0.35],
+    ["hot", region.kind === "toronto" || region.kind === "gta" ? 0.35 : 0.25],
     ["balanced", 0.4],
-    ["cold", 0.25],
+    ["cold", region.kind === "north" ? 0.4 : 0.25],
   ]);
   const stats = TEMPERATURE_STATS[temperature];
   return {
-    city: region.city,
-    state: region.state,
-    stateCode: region.stateCode,
-    metroType: region.metroType,
+    region: region.region,
+    municipality: region.municipality,
+    regionKind: region.kind,
     temperature,
-    medianPrice: region.medianPrice,
+    benchmarkPrice: region.benchmark,
     avgDaysOnMarket: rng.int(stats.dom[0], stats.dom[1]),
     listToSaleRatio: Number(rng.range(stats.ratio[0], stats.ratio[1]).toFixed(3)),
     monthsOfInventory: Number(rng.range(stats.inventory[0], stats.inventory[1]).toFixed(1)),
-    mortgageRate: Number(rng.range(5.6, 7.4).toFixed(2)),
-    customs: {
-      closing: region.closing,
-      optionPeriod: region.optionPeriod ?? false,
-      disclosure: region.caveatEmptor ? "caveat_emptor" : "seller_disclosure",
-      typicalEarnestMoneyPct: temperature === "hot" ? rng.pick([2, 3, 5]) : rng.pick([1, 1, 2]),
-      transferTaxPct: region.transferTaxPct,
-      whoPaysTransferTax: region.whoPaysTransferTax,
-    },
+    mortgageRate: Number(rng.range(3.9, 5.4).toFixed(2)),
+    torontoMltt: region.municipality === "Toronto",
+    typicalDepositPct: temperature === "hot" ? Math.max(region.depositPct, 5) : region.depositPct,
+    offerNightsCommon: temperature === "hot" && (region.kind === "toronto" || region.kind === "gta" || region.kind === "city"),
   };
 }
 
-export function zipFor(market: Market, rng: Rng): string {
-  const region = REGIONS.find((r) => r.city === market.city && r.stateCode === market.stateCode);
-  return `${region?.zipPrefix ?? "000"}${rng.int(0, 9)}${rng.int(0, 9)}`;
+const LETTERS = "ABCEGHJKLMNPRSTVWXYZ";
+
+export function postalCodeFor(market: Market, rng: Rng): string {
+  const region = REGIONS.find((r) => r.region === market.region);
+  const fsa = rng.pick(region?.fsas ?? ["M4C"]);
+  return `${fsa} ${rng.int(1, 9)}${rng.pick(LETTERS.split(""))}${rng.int(0, 9)}`;
 }

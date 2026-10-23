@@ -4,7 +4,7 @@ import { Negotiation } from "./Negotiation";
 import { TermSheet } from "./TermSheet";
 import type { TransactionClientView } from "../../server/transaction/engine";
 import type { BuyerBrief, SellerBrief } from "../../server/engine/types";
-import { LOAN_LABELS, MOTIVATION_LABELS, money, typeLabel } from "../../server/narrative/format";
+import { CONDITION_LABELS, FINANCING_LABELS, MOTIVATION_LABELS, money, typeLabel } from "../../server/narrative/format";
 
 type Tab = "listing" | "comps" | "disclosures" | "client" | "reports";
 
@@ -43,7 +43,7 @@ export function DealFile({ view, onNegotiationChange }: { view: UserView; onNego
       <div className="deal-header">
         <div>
           <div className="eyebrow">
-            {typeLabel(p.type)} · {p.address.city}, {p.address.stateCode} {p.address.zip}
+            {typeLabel(p.type)} · {p.address.municipality}, ON {p.address.postalCode}
           </div>
           <h1>{p.address.street}</h1>
           <div className="muted">{view.public.listingHeadline}</div>
@@ -145,18 +145,16 @@ function SellerNumbers({ brief }: { brief: SellerBrief }) {
       <dd><Urgency level={brief.urgency} /></dd>
       <dt>Lowest acceptable price</dt>
       <dd className="strong">{money(brief.reservationPrice)}</dd>
-      <dt>Mortgage payoff</dt>
+      <dt>Mortgage to discharge</dt>
       <dd>{money(brief.mortgagePayoff)}</dd>
-      <dt>Max credits and repairs</dt>
-      <dd>{money(brief.maxConcessions)}</dd>
-      <dt>Closing window</dt>
-      <dd>{formatDate(brief.earliestClose)} to {formatDate(brief.latestClose)} (ideal {formatDate(brief.idealClose)})</dd>
-      <dt>Rent-back needed</dt>
-      <dd>{brief.needsRentBackDays ? `${brief.needsRentBackDays} days` : "No"}</dd>
-      <dt>Home-sale contingency</dt>
-      <dd>{brief.acceptsHomeSaleContingency ? "Would consider" : "Won't accept"}</dd>
-      <dt>Acceptable financing</dt>
-      <dd>{brief.acceptableLoanTypes.map((l) => LOAN_LABELS[l]).join(", ")}</dd>
+      <dt>Completion window</dt>
+      <dd>{formatDate(brief.earliestClose)} to {formatDate(brief.latestClose)} (ideal {formatDate(brief.idealClose)}){brief.boughtElsewhere ? ". They've bought firm elsewhere." : ""}</dd>
+      <dt>Minimum deposit</dt>
+      <dd>{brief.minDepositPct}% of price</dd>
+      <dt>Longest condition</dt>
+      <dd>{brief.maxConditionDays} banking days</dd>
+      <dt>Sale-of-property condition</dt>
+      <dd>{brief.acceptsSaleCondition ? "Would consider, with an escape clause" : "Won't accept"}</dd>
     </dl>
   );
 }
@@ -171,14 +169,14 @@ function BuyerNumbers({ brief }: { brief: BuyerBrief }) {
       <dt>Highest acceptable price</dt>
       <dd className="strong">{money(brief.reservationPrice)}</dd>
       <dt>Financing</dt>
-      <dd>
-        {brief.loanType === "cash" ? "Cash" : `${LOAN_LABELS[brief.loanType]}, ${brief.downPaymentPct}% down, pre-approved to ${money(brief.preapprovalAmount ?? 0)}`}
-      </dd>
-      <dt>Cash reserves</dt>
+      <dd>{brief.financing === "cash" ? "Cash" : `${FINANCING_LABELS[brief.financing]}, ${brief.downPaymentPct}% down, pre-approved to ${money(brief.preapprovalAmount ?? 0)}`}</dd>
+      <dt>Cash beyond closing costs</dt>
       <dd>{money(brief.cashReserves)}</dd>
-      <dt>Could cover an appraisal gap of</dt>
+      <dt>Could cover a low appraisal by</dt>
       <dd>{money(brief.maxAppraisalGapCoverage)}</dd>
-      <dt>Closing window</dt>
+      <dt>First-time buyer</dt>
+      <dd>{brief.firstTimeBuyer ? "Yes (land transfer tax refund)" : "No"}</dd>
+      <dt>Completion window</dt>
       <dd>{formatDate(brief.earliestClose)} to {formatDate(brief.latestClose)} (ideal {formatDate(brief.idealClose)})</dd>
       {brief.leaseEndsOn && (
         <>
@@ -187,9 +185,9 @@ function BuyerNumbers({ brief }: { brief: BuyerBrief }) {
         </>
       )}
       <dt>Home to sell</dt>
-      <dd>{brief.homeToSell ? `${brief.homeToSell.status.replace(/_/g, " ")}, about ${money(brief.homeToSell.equity)} equity` : "None"}</dd>
-      <dt>Willing to waive</dt>
-      <dd>{brief.willingToWaive.length ? brief.willingToWaive.join(", ") : "Nothing"}</dd>
+      <dd>{brief.homeToSell ? `${brief.homeToSell.status.replace(/_/g, " ")}, about ${money(brief.homeToSell.equity)} equity${brief.needsSaleCondition ? "; needs a sale condition" : ""}` : "None"}</dd>
+      <dt>Would go without</dt>
+      <dd>{brief.willingToWaive.length ? brief.willingToWaive.map((k) => `${CONDITION_LABELS[k].toLowerCase()} condition`).join(", ") : "Nothing; they need their conditions"}</dd>
       <dt>Must-haves</dt>
       <dd>{brief.mustHaves.join(", ")}</dd>
     </dl>
@@ -198,46 +196,71 @@ function BuyerNumbers({ brief }: { brief: BuyerBrief }) {
 
 function ListingTab({ view }: { view: UserView }) {
   const { property: p, market } = view.public;
-  const isLand = p.type === "land";
+  const isLand = p.type === "vacant_land";
   return (
     <div className="tab-body">
       <p>{view.public.listingRemarks}</p>
       <dl className="kv">
         {!isLand && (
           <>
-            <dt>Beds / baths</dt>
+            <dt>Style</dt>
+            <dd>{p.style}</dd>
+            <dt>Bedrooms / bathrooms</dt>
             <dd>{p.beds} / {p.baths}</dd>
-            <dt>Square feet</dt>
-            <dd>{p.sqft.toLocaleString()}</dd>
+            <dt>Approx. square feet</dt>
+            <dd>{p.sqft.toLocaleString("en-CA")}</dd>
             <dt>Year built</dt>
             <dd>{p.yearBuilt}</dd>
-            <dt>Stories</dt>
-            <dd>{p.stories}</dd>
+            <dt>Basement</dt>
+            <dd>{p.basement}</dd>
             <dt>Parking</dt>
-            <dd>{p.garage}</dd>
+            <dd>{p.parking}</dd>
             <dt>Heating / cooling</dt>
             <dd>{p.heating} / {p.cooling}</dd>
           </>
         )}
-        {p.lotAcres > 0 && (
+        {p.lotFrontageFt && p.lotDepthFt && (
           <>
             <dt>Lot</dt>
-            <dd>{p.lotAcres} acres</dd>
+            <dd>{p.lotFrontageFt} × {p.lotDepthFt} ft</dd>
+          </>
+        )}
+        {p.acres !== null && (
+          <>
+            <dt>Lot</dt>
+            <dd>{p.acres} acres</dd>
           </>
         )}
         <dt>Water / sewer</dt>
         <dd>{p.water} / {p.sewer}</dd>
-        <dt>Annual taxes</dt>
-        <dd>{money(p.annualTaxes)}</dd>
-        {p.hoa && (
+        <dt>Taxes</dt>
+        <dd>{money(p.annualTaxes)}/year</dd>
+        {p.condo && (
           <>
-            <dt>HOA</dt>
-            <dd>
-              {money(p.hoa.monthlyDues)}/month, includes {p.hoa.includes.join(", ")}
-              {p.hoa.rentalCap ? "; rental cap" : ""}
-            </dd>
+            <dt>Condo corporation</dt>
+            <dd>{p.condo.corporation}</dd>
+            <dt>Maintenance fees</dt>
+            <dd>{money(p.condo.monthlyFees)}/month, includes {p.condo.includes.join(", ")}</dd>
+            <dt>Parking / locker</dt>
+            <dd>{p.condo.parking === "none" ? "No parking" : `${p.condo.parking === "owned" ? "Owned" : "Exclusive use"} parking`}{p.condo.locker ? ", locker" : ", no locker"}</dd>
+            <dt>Building rules</dt>
+            <dd>{[p.condo.petRestrictions ? "pet restrictions" : null, p.condo.shortTermRentalBan ? "no short-term rentals" : null].filter(Boolean).join(", ") || "None noted"}</dd>
           </>
         )}
+        {p.potlFee && (
+          <>
+            <dt>POTL fee</dt>
+            <dd>{money(p.potlFee)}/month</dd>
+          </>
+        )}
+        {p.rentalItems.length > 0 && (
+          <>
+            <dt>Rental items</dt>
+            <dd>{p.rentalItems.map((r) => `${r.item} (${money(r.monthly)}/month)`).join(", ")}</dd>
+          </>
+        )}
+        <dt>SPIS</dt>
+        <dd>{p.spisProvided ? "Provided" : "Not provided"}</dd>
         {Object.entries(p.extras).map(([k, v]) => (
           <FragmentRow key={k} label={humanize(k)} value={formatExtra(k, v)} />
         ))}
@@ -252,10 +275,15 @@ function ListingTab({ view }: { view: UserView }) {
         <>
           <h4>Units</h4>
           <table>
-            <thead><tr><th>Unit</th><th>Beds</th><th>Rent</th><th>Lease</th></tr></thead>
+            <thead><tr><th>Unit</th><th>Beds</th><th>Rent</th><th>Tenancy</th></tr></thead>
             <tbody>
               {p.units.map((u) => (
-                <tr key={u.label}><td>{u.label}</td><td>{u.beds}</td><td>{u.monthlyRent ? money(u.monthlyRent) : "Vacant"}</td><td>{u.leaseEnds ?? "—"}</td></tr>
+                <tr key={u.label}>
+                  <td>{u.label}</td>
+                  <td>{u.beds}</td>
+                  <td>{u.monthlyRent ? money(u.monthlyRent) : "—"}</td>
+                  <td>{{ month_to_month: `Month to month since ${u.tenantSince}`, fixed_term: `Lease since ${u.tenantSince}`, vacant: "Vacant", owner: "Owner-occupied" }[u.tenancy]}</td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -269,7 +297,7 @@ function ListingTab({ view }: { view: UserView }) {
           ))}
         </tbody>
       </table>
-      <h4>Neighborhood</h4>
+      <h4>Neighbourhood</h4>
       <p>{view.public.neighborhood}</p>
       <h4>Market</h4>
       <p>{view.public.marketSnapshot}</p>
@@ -278,19 +306,20 @@ function ListingTab({ view }: { view: UserView }) {
         <Stat label="Avg days on market" value={String(market.avgDaysOnMarket)} />
         <Stat label="Sale-to-list" value={`${Math.round(market.listToSaleRatio * 1000) / 10}%`} />
         <Stat label="Inventory" value={`${market.monthsOfInventory} mo`} />
-        <Stat label="30-yr rate" value={`${market.mortgageRate}%`} />
+        <Stat label="5-yr fixed" value={`${market.mortgageRate}%`} />
+        <Stat label="Detached benchmark" value={money(market.benchmarkPrice)} />
       </div>
     </div>
   );
 }
 
 function CompsTab({ view }: { view: UserView }) {
-  const isLand = view.public.property.type === "land";
+  const isLand = view.public.property.type === "vacant_land";
   return (
     <div className="tab-body">
       <table>
         <thead>
-          <tr><th>Address</th><th>Sold</th><th className="num">Price</th>{!isLand && <th>Bd/Ba</th>}{!isLand && <th className="num">Sq ft</th>}{!isLand && <th className="num">$/sq ft</th>}<th className="num">DOM</th><th className="num">Mi</th></tr>
+          <tr><th>Address</th><th>Sold</th><th className="num">Price</th>{!isLand && <th>Bd/Ba</th>}{!isLand && <th className="num">Sq ft</th>}{!isLand && <th className="num">$/sq ft</th>}<th className="num">DOM</th><th className="num">km</th></tr>
         </thead>
         <tbody>
           {view.public.comps.map((c) => (
@@ -299,16 +328,16 @@ function CompsTab({ view }: { view: UserView }) {
               <td>{formatDate(c.soldDate)}</td>
               <td className="num">{money(c.soldPrice)}</td>
               {!isLand && <td>{c.beds}/{c.baths}</td>}
-              {!isLand && <td className="num">{c.sqft.toLocaleString()}</td>}
+              {!isLand && <td className="num">{c.sqft.toLocaleString("en-CA")}</td>}
               {!isLand && <td className="num">{c.sqft ? money(c.soldPrice / c.sqft) : "—"}</td>}
               <td className="num">{c.daysOnMarket}</td>
-              <td className="num">{c.distanceMiles}</td>
+              <td className="num">{c.distanceKm}</td>
             </tr>
           ))}
         </tbody>
       </table>
       {!isLand && view.public.property.sqft > 0 && (
-        <p className="muted small">Subject: {view.public.property.sqft.toLocaleString()} sq ft listed at {money(view.public.property.listPrice / view.public.property.sqft)}/sq ft.</p>
+        <p className="muted small">Subject: about {view.public.property.sqft.toLocaleString("en-CA")} sq ft listed at {money(view.public.property.listPrice / view.public.property.sqft)}/sq ft.</p>
       )}
     </div>
   );
@@ -335,7 +364,7 @@ function ReportsTab({ tx }: { tx: TransactionClientView }) {
                   <tr key={f.id}>
                     <td>
                       {f.title}
-                      <div className="muted small">{f.system}{f.disclosed ? " · disclosed by seller" : ""}{f.detectableBy === "specialist" ? " · found by a specialist" : ""}</div>
+                      <div className="muted small">{f.system}{f.disclosed ? " · disclosed by seller" : ""}{f.affectsInsurance ? " · affects insurance" : ""}</div>
                     </td>
                     <td><span className={`sev sev-${f.severity}`}>{severityLabel[f.severity]}</span></td>
                     <td className="num">{f.repairCostHigh ? `${money(f.repairCostLow)}–${money(f.repairCostHigh)}` : "—"}</td>
@@ -416,7 +445,7 @@ function formatExtra(key: string, value: string | number | boolean): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {
     if (/pct/i.test(key)) return `${value}%`;
-    if (/upgrades|incentive|rent/i.test(key)) return money(value);
+    if (/upgrades|incentive|rent|fee/i.test(key)) return money(value);
     if (/ft$/i.test(key)) return `${value.toLocaleString()} ft`;
     return value.toLocaleString();
   }
@@ -425,5 +454,5 @@ function formatExtra(key: string, value: string | number | boolean): string {
 
 function formatDate(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
-  return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }

@@ -13,13 +13,13 @@ const ClientStorySchema = z.object({
 export const NarrativeSchema = z.object({
   listingHeadline: z.string().describe("MLS-style headline, under 80 characters."),
   listingRemarks: z.string().describe("Public MLS remarks, 90-160 words, in a listing agent's voice. Honest but upbeat."),
-  neighborhood: z.string().describe("2-3 sentences about the neighborhood or area."),
+  neighborhood: z.string().describe("2-3 sentences about the neighbourhood or area."),
   marketSnapshot: z.string().describe("2-3 sentences describing current local market conditions, consistent with the market numbers."),
   sellerStory: ClientStorySchema,
   buyerStory: ClientStorySchema,
   opposingAgent: z.object({
     name: z.string(),
-    brokerage: z.string().describe("A fictional local brokerage name."),
+    brokerage: z.string().describe("A fictional Ontario brokerage name ending in Brokerage, e.g. 'Lakeview Realty Inc., Brokerage'."),
     yearsExperience: z.number().int(),
     dealsPerYear: z.number().int(),
     voice: z.string().describe("How this agent talks and negotiates, consistent with their temperament. 2-3 sentences."),
@@ -27,8 +27,8 @@ export const NarrativeSchema = z.object({
     publicBio: z.string().describe("2 sentences anyone could find online about this agent."),
   }),
   openingSituation: z.object({
-    buyer_agent: z.string().describe("Second person, for the user as the buyer's agent: what has happened so far and that they are about to write an offer. 2-4 sentences."),
-    seller_agent: z.string().describe("Second person, for the user as the listing agent: what has happened so far and that an offer is about to arrive from the opposing buyer's agent. 2-4 sentences."),
+    buyer_agent: z.string().describe("Second person, for the user as the buyer's agent: what has happened so far (representation agreement signed, RECO Information Guide provided) and that they are about to write an offer. 2-4 sentences."),
+    seller_agent: z.string().describe("Second person, for the user as the listing agent: what has happened so far (listing agreement signed, RECO Information Guide provided) and that an offer is about to arrive from the opposing buyer's agent. 2-4 sentences."),
   }),
 });
 

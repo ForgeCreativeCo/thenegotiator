@@ -3,7 +3,7 @@ import { ApiError, api, type NegotiationView, type UserAction, type UserView } f
 import type { Offer } from "../../server/negotiation/types";
 import type { Terms } from "../../server/negotiation/terms";
 import { describeTerms } from "../../server/negotiation/terms";
-import { money } from "../../server/narrative/format";
+import { CONDITION_LABELS, money } from "../../server/narrative/format";
 import { OfferForm } from "./OfferForm";
 import { TransactionPanel } from "./TransactionPanel";
 import { mySide, openOfferFrom, simClock, startingTerms } from "./negotiationUtils";
@@ -157,7 +157,7 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
               Send
             </button>
             <button className="primary" disabled={Boolean(pending)} onClick={() => { setError(null); setFormOpen(true); }}>
-              {negotiation?.offers.length ? "Counter" : "Make offer"}
+              {negotiation?.offers.length ? "Sign back" : "Write offer"}
             </button>
             {theirOpen && (
               <button className="accept" disabled={Boolean(pending)} onClick={() => act({ type: "accept", text }, "accept")}>
@@ -202,7 +202,8 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
 
 function OfferCard({ offer, view }: { offer: Offer; view: UserView }) {
   const lines = describeTerms(offer.terms, view.public);
-  const headline = lines.filter((l) => ["closingDate", "sellerCredit", "inspectionDays", "appraisal"].includes(l.key));
+  const headline = lines.filter((l) => ["deposit", "completionDate", "irrevocable"].includes(l.key));
+  const conditions = offer.terms.conditions.length ? offer.terms.conditions.map((c) => `${CONDITION_LABELS[c.key].toLowerCase()} (${c.days})`).join(", ") : "none (firm)";
   return (
     <div className={`offer-card status-${offer.status}`}>
       <div className="offer-card-head">
@@ -215,6 +216,9 @@ function OfferCard({ offer, view }: { offer: Offer; view: UserView }) {
             {l.label}: <strong>{l.value}</strong>
           </span>
         ))}
+        <span>
+          Conditions: <strong>{conditions}</strong>
+        </span>
       </div>
     </div>
   );
@@ -228,7 +232,7 @@ function actionLabel(action: string, isCounter: boolean): string {
   switch (action) {
     case "offer":
     case "counter":
-      return isCounter ? "Counteroffer" : "Offer";
+      return isCounter ? "Sign-back" : "Offer";
     case "accept":
       return "Accepted";
     case "reject":

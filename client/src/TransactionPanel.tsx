@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ApiError, api, type NegotiationView, type TxAction, type UserView } from "./api";
-import type { Issue, Proposal } from "../../server/transaction/types";
+import type { ConditionState, Issue, Proposal } from "../../server/transaction/types";
 import type { TransactionClientView } from "../../server/transaction/engine";
 import { displayDate, money } from "../../server/narrative/format";
 import { mySide } from "./negotiationUtils";
@@ -11,12 +11,11 @@ interface Props {
   onChange: (n: NegotiationView) => void;
 }
 
-/** Post-contract controls: the clock, open issues, termination rights, and chat. */
+/** After acceptance: the clock, conditions, open issues, and chat. */
 export function TransactionPanel({ view, tx, onChange }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; details: string[] } | null>(null);
   const [text, setText] = useState("");
-  const [confirmTerminate, setConfirmTerminate] = useState(false);
   const [dateChange, setDateChange] = useState<string | null>(null);
   const me = mySide(view);
   const other = view.opposingAgent.name.split(" ")[0];
@@ -28,7 +27,6 @@ export function TransactionPanel({ view, tx, onChange }: Props) {
       const result = await api.actTx(view.id, action);
       onChange(result.negotiation);
       setText("");
-      setConfirmTerminate(false);
       setDateChange(null);
     } catch (e) {
       const err = e as ApiError;
@@ -41,16 +39,20 @@ export function TransactionPanel({ view, tx, onChange }: Props) {
   if (tx.status !== "active") return <Outcome view={view} tx={tx} />;
 
   const open = tx.issues.filter((i) => i.status === "open");
-  const deadlinesToday = tx.deadlines.filter((d) => d.status === "upcoming" && d.day === tx.day && d.id !== "closing");
+  const dueToday = [
+    ...tx.conditions.filter((c) => c.status === "pending" && c.deadlineDay === tx.day).map((c) => `the ${c.label.toLowerCase()} condition`),
+    ...open.filter((i) => i.deadlineDay === tx.day && !i.conditionKey).map((i) => i.title.toLowerCase()),
+  ];
+  const pending = tx.conditions.filter((c) => c.status === "pending");
 
   return (
     <div className="tx-panel">
       <div className="tx-clock">
         <div>
-          <div className="eyebrow">Today</div>
+          <div className="eyebrow">Today · {tx.firm ? "Firm" : "Conditional"}</div>
           <div className="tx-today">{displayDate(tx.today)}</div>
           <div className="muted small">
-            Day {tx.day} of {tx.closingDay} · closing {tx.closingDateDisplay}
+            Day {tx.day} of {tx.closingDay} · completion {tx.closingDateDisplay}
           </div>
         </div>
         <div className="row">
@@ -62,13 +64,22 @@ export function TransactionPanel({ view, tx, onChange }: Props) {
           </button>
         </div>
       </div>
-      {deadlinesToday.length > 0 && (
+      {dueToday.length > 0 && (
         <div className="banner-inline warn">
-          Due today: {deadlinesToday.map((d) => d.label.toLowerCase()).join(", ")}. Moving to the next day lets it pass.
+          Due today: {dueToday.join(", ")}.{me === "buyer" && pending.some((c) => c.deadlineDay === tx.day) ? " If it isn't waived or fulfilled today, the agreement becomes null and void tomorrow." : ""}
         </div>
       )}
 
-      {open.length === 0 && <p className="muted small">Nothing needs your attention right now. Move the calendar forward to keep the deal moving.</p>}
+      {pending.length > 0 && (
+        <section className="conditions-panel">
+          <h3>Conditions</h3>
+          {pending.map((c) => (
+            <ConditionCard key={c.key} condition={c} tx={tx} me={me} busy={Boolean(busy)} onAct={act} />
+          ))}
+        </section>
+      )}
+
+      {open.length === 0 && pending.length === 0 && <p className="muted small">Nothing needs your attention right now. Move the calendar forward to keep the deal moving.</p>}
       {open.map((issue) => (
         <IssueCard key={`${issue.id}-${issue.proposals.length}`} issue={issue} view={view} tx={tx} busy={Boolean(busy)} other={other} onAct={act} />
       ))}
@@ -105,45 +116,82 @@ export function TransactionPanel({ view, tx, onChange }: Props) {
             Send
           </button>
           {dateChange === null ? (
-            <button className="ghost" disabled={Boolean(busy)} onClick={() => setDateChange(tx.terms.closingDate)}>
-              Ask to change closing date
+            <button className="ghost" disabled={Boolean(busy)} onClick={() => setDateChange(tx.terms.completionDate)}>
+              Ask to change completion date
             </button>
           ) : (
             <span className="inline-form">
-              <input type="date" value={dateChange} onChange={(e) => setDateChange(e.target.value)} />
+              <input type="date" value={dateChange} onChange={(e) => setDateChange(e.target.value)} aria-label="New completion date" />
               <button className="secondary" disabled={Boolean(busy)} onClick={() => act({ type: "request_date_change", closingDate: dateChange, text }, "date")}>
-                Request
+                Request amendment
               </button>
               <button className="ghost" onClick={() => setDateChange(null)}>
                 Cancel
               </button>
             </span>
           )}
-          {me === "buyer" &&
-            (confirmTerminate ? (
-              <span className="confirm-walk">
-                Terminate the contract?
-                <button className="danger" onClick={() => act({ type: "terminate", text }, "terminate")}>
-                  Yes, terminate
+        </div>
+        {me === "buyer" && (
+          <div className="muted small">
+            {tx.releaseOptions.length
+              ? `Your buyers can end the deal and get the deposit back by not waiving: ${tx.releaseOptions.map((r) => `${r.label} (until ${displayDate(addDays(tx.effectiveDate, r.untilDay))})`).join("; ")}.`
+              : "Your buyers are firm. If they can't complete, they lose the deposit and can be sued for damages."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConditionCard({ condition, tx, me, busy, onAct }: { condition: ConditionState; tx: TransactionClientView; me: "buyer" | "seller"; busy: boolean; onAct: (a: TxAction, label: string) => void }) {
+  const [confirmFail, setConfirmFail] = useState(false);
+  const [extraDays, setExtraDays] = useState(3);
+  const deadline = displayDate(addDays(tx.effectiveDate, condition.deadlineDay));
+  const extending = tx.issues.some((i) => i.status === "open" && i.kind === "condition_extension" && i.conditionKey === condition.key);
+  return (
+    <div className={`condition-card ${condition.deadlineDay === tx.day ? "due" : ""}`}>
+      <div className="issue-head">
+        <strong>{condition.label}</strong>
+        <span className="pill pill-warn">Waive or fulfil by {deadline}</span>
+      </div>
+      {me === "buyer" ? (
+        <>
+          {tx.conditionGuidance[condition.key] && <div className="muted small">{tx.conditionGuidance[condition.key]}</div>}
+          <div className="issue-actions">
+            <button className="accept" disabled={busy} onClick={() => onAct({ type: "condition", key: condition.key, how: "fulfil" }, "condition")}>
+              Fulfil (Form 124)
+            </button>
+            <button className="secondary" disabled={busy} onClick={() => onAct({ type: "condition", key: condition.key, how: "waive" }, "condition")}>
+              Waive (Form 123)
+            </button>
+            {!extending && (
+              <span className="inline-form">
+                <input type="number" min={1} max={10} value={extraDays} onChange={(e) => setExtraDays(Number(e.target.value))} aria-label="Extra banking days" />
+                <button className="ghost" disabled={busy} onClick={() => onAct({ type: "request_condition_extension", key: condition.key, days: extraDays }, "extend")}>
+                  Ask for more days
                 </button>
-                <button className="ghost" onClick={() => setConfirmTerminate(false)}>
+              </span>
+            )}
+            {confirmFail ? (
+              <span className="confirm-walk">
+                End the deal?
+                <button className="danger" onClick={() => onAct({ type: "release", key: condition.key }, "release")}>
+                  Yes, don't waive
+                </button>
+                <button className="ghost" onClick={() => setConfirmFail(false)}>
                   No
                 </button>
               </span>
             ) : (
-              <button className="ghost" disabled={Boolean(busy)} onClick={() => setConfirmTerminate(true)}>
-                Terminate…
+              <button className="ghost" disabled={busy} onClick={() => setConfirmFail(true)}>
+                Let it fail…
               </button>
-            ))}
-        </div>
-        {me === "buyer" && (
-          <div className="muted small">
-            {tx.rights.length
-              ? `Your buyers can cancel and keep their earnest money under: ${tx.rights.map((r) => `${r.label} (until ${displayDate(addDays(tx.effectiveDate, r.untilDay))})`).join("; ")}.`
-              : "Your buyers have no contingency that lets them cancel right now without losing their earnest money."}
+            )}
           </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <div className="muted small">Waiting on the buyer's side. If it isn't waived or fulfilled by the deadline, the agreement is null and void.</div>
+      )}
     </div>
   );
 }
@@ -152,36 +200,36 @@ function IssueCard({ issue, view, tx, busy, other, onAct }: { issue: Issue; view
   const me = mySide(view);
   const last = issue.proposals[issue.proposals.length - 1] as Proposal | undefined;
   const isDate = issue.kind === "extension" || issue.kind === "date_change";
-  const isMoney = ["repairs", "appraisal", "title", "walkthrough"].includes(issue.kind);
-  const [amount, setAmount] = useState<number>(last?.amount || issue.reference || (issue.kind === "possession" ? 5 : 0));
-  const [date, setDate] = useState<string>(last?.closingDate ?? issue.neededDate ?? tx.terms.closingDate);
-  const [form, setForm] = useState<NonNullable<Proposal["form"]>>(last?.form ?? (issue.kind === "appraisal" ? "price_reduction" : "credit"));
+  const isMoney = ["repairs", "appraisal", "title", "visit"].includes(issue.kind);
+  const isDays = issue.kind === "condition_extension";
+  const [amount, setAmount] = useState<number>(last?.amount || issue.reference || 0);
+  const [date, setDate] = useState<string>(last?.closingDate ?? issue.neededDate ?? tx.terms.completionDate);
+  const [form, setForm] = useState<NonNullable<Proposal["form"]>>(last?.form ?? "price_reduction");
 
   const myTurnToRequest = issue.proposals.length === 0 && issue.requester === me;
   const theirMove = last && last.by !== me;
   const waiting = (issue.proposals.length === 0 && issue.requester !== me) || (last && last.by === me);
   const deadline = issue.deadlineDay !== null ? displayDate(addDays(tx.effectiveDate, issue.deadlineDay)) : null;
-
   const proposeAction = (): TxAction => ({ type: "propose", issueId: issue.id, amount, closingDate: isDate ? date : undefined, form: isMoney ? form : undefined });
 
-  const amountInput = isDate ? (
-    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-  ) : issue.kind === "possession" ? (
+  const input = isDate ? (
+    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Completion date" />
+  ) : isDays ? (
     <span className="money-input">
-      <input type="number" min={0} max={60} value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
-      <span>days</span>
+      <input type="number" min={1} max={10} value={amount} onChange={(e) => setAmount(Number(e.target.value))} aria-label="Banking days" />
+      <span>banking days</span>
     </span>
   ) : isMoney ? (
     <>
       <span className="money-input">
         <span>$</span>
-        <input type="number" min={0} step={250} value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
+        <input type="number" min={0} step="any" value={amount} onChange={(e) => setAmount(Number(e.target.value))} aria-label="Amount" />
       </span>
       {issue.kind !== "appraisal" && (
-        <select value={form} onChange={(e) => setForm(e.target.value as NonNullable<Proposal["form"]>)}>
-          <option value="credit">as a credit</option>
+        <select value={form} onChange={(e) => setForm(e.target.value as NonNullable<Proposal["form"]>)} aria-label="Form">
           <option value="price_reduction">as a price reduction</option>
-          <option value="repairs">as seller repairs</option>
+          <option value="repairs">as seller repairs before completion</option>
+          <option value="credit">as a credit on closing</option>
         </select>
       )}
     </>
@@ -206,31 +254,36 @@ function IssueCard({ issue, view, tx, busy, other, onAct }: { issue: Issue; view
       )}
 
       {issue.kind === "loan" ? (
-        <p className="muted small">{me === "buyer" ? "Decide whether to terminate before the financing contingency runs out." : `Waiting to hear whether the buyers will terminate.`}</p>
-      ) : issue.kind === "kickout" && me === "buyer" && theirMove ? (
+        <p className="muted small">{me === "buyer" ? "Use \"Let it fail\" on the financing condition to end the deal with the deposit returned, or wait and hope the lender comes around." : "Waiting to hear whether the buyers will let the financing condition fail."}</p>
+      ) : issue.kind === "escape_clause" && me === "buyer" && theirMove ? (
         <div className="issue-actions">
           <button className="accept" disabled={busy} onClick={() => onAct({ type: "accept", issueId: issue.id }, "accept")}>
-            Remove the contingency
+            Waive the sale condition
           </button>
-          <span className="muted small">Or terminate to release the contract and get the earnest money back.</span>
+          <span className="muted small">Or do nothing: after 72 hours the agreement ends and the deposit comes back.</span>
         </div>
       ) : myTurnToRequest ? (
         <div className="issue-actions">
-          {issue.kind === "kickout" ? (
+          {issue.kind === "escape_clause" ? (
             <button className="primary" disabled={busy} onClick={() => onAct({ type: "propose", issueId: issue.id, amount: 0 }, "propose")}>
-              Send kick-out notice
+              Send escape clause notice
             </button>
           ) : (
             <>
-              {amountInput}
+              {input}
               <button className="primary" disabled={busy} onClick={() => onAct(proposeAction(), "propose")}>
                 Send request
               </button>
             </>
           )}
           <button className="ghost" disabled={busy} onClick={() => onAct({ type: "withdraw", issueId: issue.id }, "withdraw")}>
-            {issue.kind === "repairs" ? "Accept as-is" : "Drop it"}
+            {issue.kind === "repairs" ? "Proceed as is" : "Drop it"}
           </button>
+          {issue.kind === "title" && me === "buyer" && (
+            <button className="ghost" disabled={busy} onClick={() => onAct({ type: "release", key: issue.id }, "release")}>
+              End the deal on this objection
+            </button>
+          )}
         </div>
       ) : theirMove ? (
         <div className="issue-actions">
@@ -239,18 +292,22 @@ function IssueCard({ issue, view, tx, busy, other, onAct }: { issue: Issue; view
               Accept
             </button>
           )}
-          {amountInput}
-          <button className="secondary" disabled={busy} onClick={() => onAct(proposeAction(), "propose")}>
-            Counter
-          </button>
-          {last!.kind !== "reject" && (
+          {issue.kind !== "escape_clause" && (
+            <>
+              {input}
+              <button className="secondary" disabled={busy} onClick={() => onAct(proposeAction(), "propose")}>
+                Counter
+              </button>
+            </>
+          )}
+          {last!.kind !== "reject" && issue.kind !== "escape_clause" && (
             <button className="ghost" disabled={busy} onClick={() => onAct({ type: "reject", issueId: issue.id }, "reject")}>
               Decline
             </button>
           )}
           {issue.requester === me && last!.kind === "reject" && (
             <button className="ghost" disabled={busy} onClick={() => onAct({ type: "withdraw", issueId: issue.id }, "withdraw")}>
-              {issue.kind === "repairs" ? "Accept as-is" : "Drop it"}
+              {issue.kind === "repairs" ? "Proceed as is" : "Drop it"}
             </button>
           )}
         </div>
@@ -264,10 +321,10 @@ function IssueCard({ issue, view, tx, busy, other, onAct }: { issue: Issue; view
 function describeProposal(issue: Issue, p: Proposal): string {
   if (p.kind === "reject") return "declined";
   const verb = p.kind === "accept" ? "agreed to" : p.kind === "request" ? "asked for" : "countered with";
-  if (issue.kind === "kickout") return p.kind === "accept" ? "removed the contingency" : "sent the kick-out notice";
-  if (issue.kind === "extension" || issue.kind === "date_change") return `${verb} closing on ${p.closingDate ? displayDate(p.closingDate) : "?"}`;
-  if (issue.kind === "possession") return `${verb} ${p.amount} days`;
-  const form = p.form === "price_reduction" ? "price reduction" : p.form === "repairs" ? "in repairs" : "credit";
+  if (issue.kind === "escape_clause") return p.kind === "accept" ? "waived the sale condition" : "gave escape clause notice";
+  if (issue.kind === "extension" || issue.kind === "date_change") return `${verb} completion on ${p.closingDate ? displayDate(p.closingDate) : "?"}`;
+  if (issue.kind === "condition_extension") return `${verb} ${p.amount} more banking days`;
+  const form = p.form === "repairs" ? "in seller repairs" : p.form === "credit" ? "credit on closing" : "price reduction";
   return `${verb} ${money(p.amount)} ${form}`;
 }
 
@@ -276,52 +333,93 @@ function Outcome({ view, tx }: { view: UserView; tx: TransactionClientView }) {
   const st = tx.settlement;
   const me = mySide(view);
   const brief = view.yourClient.brief;
-  const em = { applied_at_closing: "Applied to the buyer's funds at closing", returned_to_buyer: "Returned to the buyer", released_to_seller: "Released to the seller" }[o.earnestMoney];
+  const title = { completed: `Completed on ${displayDate(addDays(tx.effectiveDate, o.day))}`, void: "Agreement null and void", terminated: "Agreement terminated", buyer_default: "Buyer default", seller_default: "Seller default" }[o.kind];
+  const deposit = { applied_on_completion: "Credited to the buyer on completion", returned_to_buyer: "Returned to the buyer in full", forfeited_to_seller: "Forfeited to the seller" }[o.deposit];
   return (
     <div className="tx-outcome">
-      <div className={`ended ${o.kind === "closed" ? "ended-deal" : "ended-dead"}`}>
-        {o.kind === "closed" ? `Closed on ${displayDate(addDays(tx.effectiveDate, o.day))}` : o.kind === "terminated" ? "Contract terminated" : o.kind === "buyer_default" ? "Buyer default" : "Seller default"}
-      </div>
+      <div className={`ended ${o.kind === "completed" ? "ended-deal" : "ended-dead"}`}>{title}</div>
       <p className="small">{o.reason}</p>
       <dl className="kv small">
-        <dt>Earnest money</dt>
+        <dt>Deposit</dt>
         <dd>
-          {money(tx.terms.earnestMoney)}: {em}
+          {money(tx.terms.deposit)}: {deposit}
         </dd>
+        {o.damagesExposure !== null && (
+          <>
+            <dt>Seller's possible damages claim</dt>
+            <dd className="strong">{money(o.damagesExposure)}</dd>
+          </>
+        )}
       </dl>
       {st && (
         <>
-          <h4>Settlement summary</h4>
+          <h4>Statement of adjustments (summary)</h4>
           <dl className="kv small">
-            <dt>Final price</dt>
+            <dt>Sale price</dt>
             <dd>{money(st.price)}</dd>
-            <dt>Seller credits</dt>
-            <dd>{money(st.sellerCredits)}</dd>
-            {st.repairsAgreed > 0 && (
+            {st.priceAdjustments > 0 && (
               <>
-                <dt>Seller repairs</dt>
-                <dd>{money(st.repairsAgreed)}</dd>
+                <dt>Price reductions by amendment</dt>
+                <dd>{money(st.priceAdjustments)}</dd>
               </>
             )}
-            {st.homeWarranty > 0 && (
+            {st.creditsOnClosing > 0 && (
               <>
-                <dt>Home warranty</dt>
-                <dd>{money(st.homeWarranty)}</dd>
+                <dt>Credits to buyer on closing</dt>
+                <dd>{money(st.creditsOnClosing)}</dd>
               </>
             )}
-            <dt>Seller net before commissions and costs</dt>
-            <dd className="strong">{money(st.sellerNetBeforeCosts)}</dd>
-            <dt>Seller's estimated proceeds after payoff</dt>
-            <dd>{money(st.sellerProceedsEstimate)}</dd>
-            <dt>Loan amount</dt>
-            <dd>{money(st.loanAmount)}</dd>
-            <dt>Buyer's cash to close (est.)</dt>
-            <dd>{money(st.buyerCashToClose)}</dd>
+            {st.repairsBySeller > 0 && (
+              <>
+                <dt>Repairs by seller</dt>
+                <dd>{money(st.repairsBySeller)}</dd>
+              </>
+            )}
+            {st.rentalBuyout > 0 && (
+              <>
+                <dt>Rental contracts paid out by seller</dt>
+                <dd>{money(st.rentalBuyout)}</dd>
+              </>
+            )}
+            <dt>Property tax adjustment (to seller)</dt>
+            <dd>{money(st.propertyTaxAdjustment)}</dd>
+            <dt>Deposit credited</dt>
+            <dd>{money(st.depositApplied)}</dd>
+          </dl>
+          <h4>Buyer's side</h4>
+          <dl className="kv small">
+            <dt>Ontario land transfer tax</dt>
+            <dd>{money(st.landTransferTax.provincial)}</dd>
+            {st.landTransferTax.municipal > 0 && (
+              <>
+                <dt>Toronto land transfer tax</dt>
+                <dd>{money(st.landTransferTax.municipal)}</dd>
+              </>
+            )}
+            {st.landTransferTax.firstTimeRebate > 0 && (
+              <>
+                <dt>First-time buyer refunds</dt>
+                <dd>−{money(st.landTransferTax.firstTimeRebate)}</dd>
+              </>
+            )}
+            <dt>Mortgage{st.cmhcPremium ? " (incl. CMHC premium)" : ""}</dt>
+            <dd>{money(st.mortgageAmount)}</dd>
+            <dt>Legal fees and disbursements (est.)</dt>
+            <dd>{money(st.buyerLegalAndOtherCosts)}</dd>
+            <dt>Balance due on closing (est.)</dt>
+            <dd className="strong">{money(st.buyerBalanceDueOnClosing)}</dd>
+          </dl>
+          <h4>Seller's side</h4>
+          <dl className="kv small">
+            <dt>Mortgage discharged</dt>
+            <dd>{money(st.sellerMortgageDischarge)}</dd>
+            <dt>Proceeds before commission (est.)</dt>
+            <dd className="strong">{money(st.sellerProceedsBeforeCommission)}</dd>
           </dl>
           <div className="guidance small">
             {me === "seller"
-              ? `Your sellers' floor was ${money(brief.reservationPrice)} net. They netted ${money(st.sellerNetBeforeCosts)}.`
-              : `Your buyers' ceiling was ${money(brief.reservationPrice)}. They paid ${money(st.price - st.sellerCredits)} net of credits.`}{" "}
+              ? `Your sellers' floor was ${money(brief.reservationPrice)}. The final price was ${money(st.price - st.rentalBuyout)}${st.rentalBuyout ? " net of the rental buyout" : ""}${st.creditsOnClosing + st.repairsBySeller ? `, before ${money(st.creditsOnClosing + st.repairsBySeller)} in credits and repairs` : ""}.`
+              : `Your buyers' ceiling was ${money(brief.reservationPrice)}. They paid ${money(st.price - st.rentalBuyout - st.creditsOnClosing)} net of credits and the rental buyout.`}{" "}
             A full debrief of both sides arrives in build step 6.
           </div>
         </>

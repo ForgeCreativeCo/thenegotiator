@@ -1,20 +1,20 @@
-// The deal after mutual acceptance: contract terms, calendar, contingencies, issues and reports.
+// The deal after acceptance: conditional period, firm, requisitions, pre-closing visits, completion.
 
-import type { Finding, Side } from "../engine/types";
+import type { ConditionKey, Finding, Side } from "../engine/types";
 import type { Terms } from "../negotiation/terms";
 
 export type IssueKind =
-  | "repairs" // inspection or due-diligence findings
-  | "appraisal" // appraisal came in below price
-  | "title" // a title defect the seller can't cure
-  | "walkthrough" // damage or missing items at the final walkthrough
-  | "extension" // move the closing date because something isn't ready
-  | "date_change" // a client wants a different closing date
-  | "possession" // seller wants extra days after closing
-  | "loan" // the loan was denied; buyer decides whether to terminate
-  | "kickout"; // seller got another offer; buyer must remove the home-sale contingency or release
+  | "repairs" // findings from inspection, status certificate, water/septic, or the insurer, negotiated before waiving
+  | "appraisal" // the lender's appraisal came in below the price
+  | "condition_extension" // buyer asks for more time on a condition (Amendment)
+  | "loan" // mortgage declined; buyer decides whether to let the financing condition fail
+  | "escape_clause" // seller has another offer; buyer must waive the sale condition within 72 hours
+  | "title" // a title requisition the seller can't answer
+  | "visit" // damage or missing chattels found on a pre-closing visit
+  | "extension" // move completion because something isn't ready (Amendment)
+  | "date_change"; // a client wants a different completion date (Amendment)
 
-/** For money issues: dollars the seller gives. For date issues: a new closing date. For possession: days. */
+/** For money issues: dollars the seller gives. For date issues: a new completion date. For condition extensions: banking days added. */
 export interface Proposal {
   id: string;
   by: Side;
@@ -37,23 +37,27 @@ export interface Issue {
   deadlineDay: number | null;
   status: "open" | "agreed" | "declined" | "lapsed" | "withdrawn";
   proposals: Proposal[];
-  /** The fair-value reference for money issues (repair estimate, appraisal gap, damage cost). */
   reference: number;
-  /** Earliest workable closing date for extension issues. */
   neededDate: string | null;
   findingIds: string[];
-  /** While this issue is open, the buyer may terminate under a contingency until this day. */
+  /** The condition this issue is negotiated under; the buyer can let that condition fail instead. */
+  conditionKey: ConditionKey | null;
+  /** Kept for title objections, where the buyer can end the deal without a condition. */
   rightUntilDay: number | null;
 }
 
-export type ContingencyState = "active" | "removed" | "waived" | "expired" | "satisfied" | "n/a";
+export interface ConditionState {
+  key: ConditionKey;
+  label: string;
+  deadlineDay: number;
+  status: "pending" | "waived" | "fulfilled" | "failed";
+}
 
 export interface Deadline {
   id: string;
   label: string;
   day: number;
   status: "upcoming" | "met" | "passed";
-  /** What happens when it passes with no action. */
   consequence: string;
 }
 
@@ -61,52 +65,68 @@ export interface ScheduledEvent {
   id: string;
   day: number;
   kind:
-    | "earnest_money"
+    | "deposit"
+    | "lawyer_review"
     | "inspection_report"
-    | "hoa_documents"
-    | "title_commitment"
-    | "appraisal"
+    | "status_certificate"
+    | "water_septic"
+    | "insurance_quote"
+    | "lender_appraisal"
     | "loan_event"
-    | "clear_to_close"
+    | "mortgage_commitment"
+    | "buyer_home_sold"
     | "client_event"
     | "backup_offer"
-    | "walkthrough"
-    | "closing";
-  ref: string | null; // id of the ground-truth item this event reveals
+    | "requisition"
+    | "pre_closing_visit"
+    | "completion";
+  ref: string | null;
   fired: boolean;
 }
 
 export interface Report {
   id: string;
   day: number;
-  kind: "inspection" | "hoa_documents" | "appraisal" | "title" | "loan" | "walkthrough";
+  kind: "inspection" | "status_certificate" | "water_septic" | "insurance" | "appraisal" | "loan" | "title" | "visit" | "lawyer";
   title: string;
   summary: string;
   findings: Finding[];
   value: number | null;
 }
 
+export interface LandTransferTax {
+  provincial: number;
+  municipal: number;
+  firstTimeRebate: number;
+  total: number;
+}
+
 export interface Settlement {
-  closingDate: string;
+  completionDate: string;
   price: number;
-  sellerCredits: number;
-  homeWarranty: number;
-  sellerNetBeforeCosts: number;
-  sellerMortgagePayoff: number;
-  sellerProceedsEstimate: number;
-  loanAmount: number;
+  depositApplied: number;
+  priceAdjustments: number;
+  creditsOnClosing: number;
+  repairsBySeller: number;
+  rentalBuyout: number;
+  propertyTaxAdjustment: number;
+  landTransferTax: LandTransferTax;
+  mortgageAmount: number;
+  cmhcPremium: number;
   downPayment: number;
-  buyerClosingCostsEstimate: number;
-  earnestMoneyApplied: number;
-  buyerCashToClose: number;
-  repairsAgreed: number;
+  buyerLegalAndOtherCosts: number;
+  buyerBalanceDueOnClosing: number;
+  sellerProceedsBeforeCommission: number;
+  sellerMortgageDischarge: number;
 }
 
 export interface Outcome {
-  kind: "closed" | "terminated" | "buyer_default" | "seller_default";
+  kind: "completed" | "void" | "terminated" | "buyer_default" | "seller_default";
   day: number;
   reason: string;
-  earnestMoney: "applied_at_closing" | "returned_to_buyer" | "released_to_seller";
+  deposit: "applied_on_completion" | "returned_to_buyer" | "forfeited_to_seller";
+  /** For a buyer default: what the seller could claim on top of the deposit (resale shortfall and carrying costs). */
+  damagesExposure: number | null;
 }
 
 export interface Transaction {
@@ -115,23 +135,25 @@ export interface Transaction {
   originalTerms: Terms;
   terms: Terms;
   closingDay: number;
-  contingencies: { inspection: ContingencyState; appraisal: ContingencyState; financing: ContingencyState; homeSale: ContingencyState };
-  inspectionDeadlineDay: number | null;
-  appraisalDeadlineDay: number | null;
-  financingDeadlineDay: number | null;
-  loanStatus: "n/a" | "processing" | "conditional" | "denied" | "clear_to_close";
-  earnestMoneyDeposited: boolean;
+  conditions: ConditionState[];
+  firm: boolean;
+  firmDay: number | null;
+  requisitionDay: number;
+  loanStatus: "n/a" | "processing" | "declined" | "approved";
+  depositPaid: boolean;
   appraisedValue: number | null;
-  /** Dollars of appraisal shortfall the buyer has agreed to bring as extra cash. */
+  /** Extra cash the buyer must bring because the lender appraised below the price. */
   buyerGapCash: number;
   repairsAgreed: number;
+  creditsOnClosing: number;
+  priceReductions: number;
+  buyerHomeSold: boolean;
   backupOffer: boolean;
-  /** Findings revealed to both sides so far. */
   revealedFindingIds: string[];
   deadlines: Deadline[];
   issues: Issue[];
   reports: Report[];
-  /** Private to the server: the schedule of upcoming events (it reveals what's coming). */
+  /** Private to the server: the upcoming events reveal what's coming. */
   schedule: ScheduledEvent[];
   status: "active" | "closed" | "terminated";
   outcome: Outcome | null;

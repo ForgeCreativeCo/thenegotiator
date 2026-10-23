@@ -19,14 +19,13 @@ function scenario(seed: number): Scenario {
 
 const offlinePlayer: BotPlayer = async (s, rec, ctx, _history, round) => ({ ...offlineTurn(s, rec, ctx.userTerms, round, ctx.clientUpdate), source: "offline", issues: [] });
 
-/** Terms both clients should sign when a deal is possible: midpoint price, standard contingencies. */
+/** Terms both clients should sign when a deal is possible: midpoint price, the buyer's required conditions kept short. */
 function midpointTerms(s: Scenario): Terms {
   const mid = Math.round((s.seller.reservationPrice + s.buyer.reservationPrice) / 2);
-  let t = defaultBuyerTerms(s, { price: mid, earnestMoney: Math.round(mid * 0.01) });
   const overlapStart = s.seller.earliestClose > s.buyer.earliestClose ? s.seller.earliestClose : s.buyer.earliestClose;
-  t.closingDate = overlapStart;
-  t.rentBackDays = s.seller.needsRentBackDays;
+  let t = defaultBuyerTerms(s, { price: mid, deposit: Math.ceil((mid * s.seller.minDepositPct) / 100 / 1000) * 1000, completionDate: overlapStart });
   t = repairTerms("buyer", s, t);
+  t.conditions = t.conditions.map((c) => ({ ...c, days: c.key === "sale_of_property" ? c.days : Math.min(c.days, s.seller.maxConditionDays) }));
   t.price = mid;
   return t;
 }
@@ -48,7 +47,7 @@ describe("client sign-off rules", () => {
     for (const seed of SEEDS.slice(0, 200)) {
       const s = scenario(seed);
       for (const side of ["buyer", "seller"] as Side[]) {
-        const messy = defaultBuyerTerms(s, { closingDate: "2030-01-01", inspectionDays: 60, sellerCredit: 999_999, homeSaleContingency: true, earnestMoney: 0 });
+        const messy = defaultBuyerTerms(s, { completionDate: "2030-01-01", conditions: [{ key: "inspection", days: 60 }, { key: "sale_of_property", days: 30 }], deposit: 0, preClosingVisits: 9 });
         const fixed = setNet(side, s, messy, reservationNetFor(s, side));
         expect(violations(side, s, fixed), `seed ${seed} ${side}`).toEqual([]);
       }
@@ -71,7 +70,7 @@ async function playOut(s: Scenario, concession = 0.3): Promise<Negotiation> {
 
   for (let i = 0; i < 20 && n.status === "negotiating"; i++) {
     const theirs = [...n.offers].reverse().find((o) => o.by !== mine && o.status === "open");
-    if (theirs && violations(mine, s, theirs.terms).length === 0 && dir * (netFor(mine, theirs.terms) - position) >= 0) {
+    if (theirs && violations(mine, s, theirs.terms).length === 0 && dir * (netFor(s, theirs.terms) - position) >= 0) {
       await applyUserAction(s, n, { type: "accept" }, offlinePlayer);
       break;
     }
@@ -93,7 +92,7 @@ describe("opposing agent", () => {
       let last: number | null = null;
       for (const offer of n.offers.filter((o) => o.by === side)) {
         expect(violations(side, s, offer.terms), `seed ${seed}`).toEqual([]);
-        const net = netFor(side, offer.terms);
+        const net = netFor(s, offer.terms);
         if (last !== null) expect(dir * (net - last), `seed ${seed} retrade`).toBeLessThanOrEqual(reservationNet(s) * 0.002);
         last = net;
       }

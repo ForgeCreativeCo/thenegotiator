@@ -33,16 +33,22 @@ export function allowedAmounts(p: ScenarioParams): number[] {
     p.property.listPrice,
     p.property.originalListPrice,
     p.property.annualTaxes,
-    p.market.medianPrice,
+    p.market.benchmarkPrice,
     ...p.property.priceHistory.map((h) => h.price),
     ...p.comps.map((c) => c.soldPrice),
+    ...p.property.rentalItems.flatMap((r) => [r.monthly, r.buyoutCost]),
   ];
-  if (p.property.hoa) amounts.push(p.property.hoa.monthlyDues);
+  if (p.property.condo) amounts.push(p.property.condo.monthlyFees);
+  if (p.property.potlFee) amounts.push(p.property.potlFee);
   for (const unit of p.property.units ?? []) if (unit.monthlyRent) amounts.push(unit.monthlyRent);
   for (const value of Object.values(p.property.extras)) if (typeof value === "number") amounts.push(value);
+  // Findings quote their own figures (e.g. a special assessment per unit).
+  for (const f of [...p.groundTruth.inspectionFindings, ...p.groundTruth.typeSpecificIssues]) {
+    for (const match of f.title.matchAll(MONEY)) amounts.push(parseAmount(match[1], match[2]));
+  }
   for (const brief of [p.seller, p.buyer]) {
     amounts.push(brief.reservationPrice);
-    if (brief.side === "seller") amounts.push(brief.mortgagePayoff, brief.maxConcessions);
+    if (brief.side === "seller") amounts.push(brief.mortgagePayoff);
     else {
       amounts.push(brief.cashReserves, brief.maxAppraisalGapCoverage);
       if (brief.preapprovalAmount) amounts.push(brief.preapprovalAmount);

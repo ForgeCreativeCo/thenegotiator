@@ -24,7 +24,7 @@ for (const concession of [0.15, 0.3, 0.6]) {
     let pos = mine === "buyer" ? Math.min(s.property.listPrice * 0.94, limit) : Math.max(s.property.listPrice, limit);
     for (let k = 0; k < 20 && n.status === "negotiating"; k++) {
       const theirs = [...n.offers].reverse().find((o) => o.by !== mine && o.status === "open");
-      if (theirs && !violations(mine, s, theirs.terms).length && dir * (netFor(mine, theirs.terms) - pos) >= 0) { await applyUserAction(s, n, { type: "accept" }, player); break; }
+      if (theirs && !violations(mine, s, theirs.terms).length && dir * (netFor(s, theirs.terms) - pos) >= 0) { await applyUserAction(s, n, { type: "accept" }, player); break; }
       await applyUserAction(s, n, { type: "offer", terms: setNet(mine, s, theirs?.terms ?? defaultBuyerTerms(s), Math.round(pos)) }, player);
       pos += (limit - pos) * concession;
     }
@@ -32,7 +32,7 @@ for (const concession of [0.15, 0.3, 0.6]) {
     if (n.status !== "under_contract") continue;
     closed++;
     const t = n.offers.find((o) => o.id === n.acceptedOfferId)!.terms;
-    const sellerShare = (t.price - t.sellerCredit - s.seller.reservationPrice) / Math.max(1, s.buyer.reservationPrice - s.seller.reservationPrice);
+    const sellerShare = (netFor(s, t) - s.seller.reservationPrice) / Math.max(1, s.buyer.reservationPrice - s.seller.reservationPrice);
     rows.push({ share: mine === "seller" ? sellerShare : 1 - sellerShare, rounds: n.botTurns.length });
   }
   rows.sort((a, b) => a.share - b.share);

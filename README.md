@@ -4,9 +4,13 @@ Practice negotiating residential real estate deals against a 30-year veteran age
 
 ## Status
 
-**Build steps 1 to 3 are done.** Click **New scenario** to generate a deal in a random market with a random property type. You're randomly assigned as the buyer's agent or the listing agent, and you see the public listing, comps, disclosures, and your own client's confidential brief.
+**Build steps 1 to 4 are done**, following Ontario practice under TRESA and the RECO Code of Ethics.
 
-Then negotiate: chat with the opposing agent, send offers and counters with the full set of terms, and accept or walk away. The term sheet compares both sides' latest positions and highlights open issues. Your own client refuses to sign anything outside their brief. When both sides accept, you're under contract and the deal runs to closing on a calendar you move forward: earnest money, inspection report and repair negotiation, HOA documents, title commitment, appraisal, lender updates, final walkthrough, and closing. Problems come from the scenario's hidden ground truth. Each one opens an issue you negotiate (credits, price reductions, extensions, possession), and deadlines lapse if you let them: a missed inspection deadline means as-is, a missed financing deadline puts the earnest money at risk. The buyer can terminate only under a live contingency. The deal ends closed with a settlement summary, terminated, or in default.
+- **Scenarios**: a random Ontario region (GTA weighted heaviest) and market, any residential type (detached, semi, freehold or condo town, condo apartment, duplex/triplex with tenants, cottage, rural acreage, vacant land, new construction, land-lease home, co-op). You're randomly the buyer's agent or the listing agent, with your client's confidential brief.
+- **Negotiation**: offers and sign-backs structured like the OREA Agreement of Purchase and Sale: price, deposit (herewith or upon acceptance), irrevocable time, completion date, Schedule A conditions in banking days, chattels and fixtures, rental items, pre-closing visits. Your own client refuses to sign anything outside their brief. The opposing agent never misrepresents and tells the truth about competing offers.
+- **Acceptance to completion**: conditions must be waived (Form 123) or fulfilled (Form 124) by their deadlines, or the agreement is null and void and the deposit comes back. Repair negotiations happen by Amendment before waiving. Then firm, title requisitions, pre-closing visits, and completion with land transfer tax (Ontario and Toronto, with first-time buyer refunds) and a statement of adjustments. A buyer who can't complete forfeits the deposit and faces a damages claim.
+
+Next: offer nights (step 5), then the mentor and debrief with RECO compliance scoring (step 6).
 
 ## Setup
 
@@ -36,4 +40,5 @@ Without an API key, scenarios still work, but their stories come from a plainer 
 2. **Claude writes the story** (`server/narrative/claude.ts`): listing copy, client backstories, and the opposing agent's persona. A check rejects any dollar amount the engine didn't produce, and Claude gets one chance to fix it.
 3. **The opposing agent plays within code-enforced limits** (`server/negotiation/`). Each turn, the strategy computes the move it recommends, the most it may concede, and whether accepting or walking is allowed. Claude writes the message and may choose differently, but any counter below its client's floor, any backward move, or any oversized concession is rejected and redone. Without an API key, a template agent plays the recommended move.
 4. **After the contract, code decides the opposing agent's moves** (`server/transaction/`) from its client's limits, and Claude only rewrites the message in the agent's voice. Sellers will give more than their original floor for real defects or a low appraisal, but only so much.
-5. **Only your view leaves the server** (`server/engine/views.ts`). The other side's brief, ground truth, and difficulty stay in the server's SQLite database (`data/`).
+5. **Ontario rules** live in `server/negotiation/constraints.ts` (who will sign what), `server/transaction/` (conditions, requisitions, completion) and `server/transaction/landTransferTax.ts`.
+6. **Only your view leaves the server** (`server/engine/views.ts`). The other side's brief, ground truth, and difficulty stay in the server's SQLite database (`data/`).

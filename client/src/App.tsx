@@ -72,7 +72,7 @@ export function App() {
               <li key={h.id}>
                 <button className={`history-item ${view?.id === h.id ? "active" : ""}`} onClick={() => open(h.id)}>
                   <span className="history-title">
-                    {h.city}, {h.stateCode}
+                    {h.region}
                   </span>
                   <span className="muted small">
                     {typeLabel(h.propertyType)} · {money(h.listPrice)}
@@ -102,7 +102,7 @@ function Empty({ onGenerate }: { onGenerate: () => void }) {
     <div className="empty">
       <h1>Ready to negotiate?</h1>
       <p className="muted">
-        Each scenario is a new residential deal in a random market. You'll be randomly assigned to represent the buyer or the seller,
+        Each scenario is a new Ontario residential deal in a random region and market. You'll be randomly assigned to represent the buyer or the seller,
         and you'll be up against a 30-year veteran agent. The difficulty is hidden until the debrief.
       </p>
       <button className="primary large" onClick={onGenerate}>

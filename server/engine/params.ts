@@ -34,7 +34,6 @@ export function generateParams(options: GenerateOptions = {}): ScenarioParams {
     seller,
     buyer,
     difficulty,
-    startDate,
     botSide: userRole === "buyer_agent" ? "seller" : "buyer",
     findings,
   });
@@ -45,7 +44,7 @@ export function generateParams(options: GenerateOptions = {}): ScenarioParams {
     market,
     property,
     comps: generateComps(rng, property, marketValue, market, start),
-    disclosures: buildDisclosures(market, property, [...findings.inspectionFindings, ...findings.typeSpecificIssues]),
+    disclosures: buildDisclosures(property, [...findings.inspectionFindings, ...findings.typeSpecificIssues]),
     typeSpecificTerms: PROPERTY_TYPES[property.type].terms,
     userRole,
     seller,

@@ -1,46 +1,47 @@
-// Scenario data model. See DESIGN.md section 1 for the four information layers.
+// Scenario data model for Ontario residential deals. See DESIGN.md section 1 for the four information layers.
 
 export type Role = "buyer_agent" | "seller_agent";
 export type Side = "buyer" | "seller";
 
 export type MarketTemperature = "hot" | "balanced" | "cold";
-export type MetroType = "urban" | "suburban" | "rural";
-export type ClosingCustom = "escrow" | "attorney" | "title_company";
+export type RegionKind = "toronto" | "gta" | "city" | "small_city" | "cottage" | "north";
 
 export type PropertyType =
-  | "single_family"
-  | "condo"
-  | "townhouse"
-  | "co_op"
-  | "multifamily"
-  | "manufactured"
-  | "new_construction"
+  | "detached"
+  | "semi_detached"
+  | "freehold_townhouse"
+  | "condo_townhouse"
+  | "condo_apartment"
+  | "multiplex"
+  | "cottage"
   | "rural_acreage"
-  | "land";
+  | "vacant_land"
+  | "new_construction"
+  | "land_lease_home"
+  | "co_op";
 
-export type LoanType = "cash" | "conventional" | "fha" | "va" | "usda" | "jumbo";
+/** insured = CMHC-insured (under 20% down); conventional = 20%+ down; alternative = B lender or private. */
+export type FinancingType = "cash" | "insured" | "conventional" | "alternative";
+
+export type ConditionKey = "financing" | "inspection" | "status_certificate" | "lawyer_review" | "insurance" | "sale_of_property" | "water_septic";
 
 // ---------- Public layer ----------
 
 export interface Market {
-  city: string;
-  state: string;
-  stateCode: string;
-  metroType: MetroType;
+  region: string; // e.g. "Toronto (East York)"
+  municipality: string; // e.g. "Toronto"
+  regionKind: RegionKind;
   temperature: MarketTemperature;
-  medianPrice: number;
+  /** Benchmark price for a detached home in this region. */
+  benchmarkPrice: number;
   avgDaysOnMarket: number;
   listToSaleRatio: number; // e.g. 1.03 = homes sell 3% over list on average
   monthsOfInventory: number;
-  mortgageRate: number; // 30-year fixed, percent
-  customs: {
-    closing: ClosingCustom;
-    optionPeriod: boolean; // Texas-style paid option period instead of an inspection contingency
-    disclosure: "seller_disclosure" | "caveat_emptor";
-    typicalEarnestMoneyPct: number;
-    transferTaxPct: number;
-    whoPaysTransferTax: "seller" | "buyer" | "split";
-  };
+  mortgageRate: number; // 5-year fixed, percent
+  /** Toronto charges a municipal land transfer tax on top of Ontario's. */
+  torontoMltt: boolean;
+  typicalDepositPct: number;
+  offerNightsCommon: boolean;
 }
 
 export interface Unit {
@@ -48,41 +49,60 @@ export interface Unit {
   beds: number;
   baths: number;
   monthlyRent: number | null; // null = vacant or owner-occupied
-  leaseEnds: string | null;
+  tenancy: "month_to_month" | "fixed_term" | "vacant" | "owner";
+  tenantSince: string | null;
 }
 
-export interface Hoa {
-  monthlyDues: number;
+export interface CondoInfo {
+  corporation: string; // e.g. "TSCC 1234"
+  monthlyFees: number;
   includes: string[];
   reserveFundStatus: "strong" | "adequate" | "underfunded";
-  rentalCap: boolean;
-  fhaApproved: boolean | null; // condos only
+  parking: "owned" | "exclusive_use" | "none";
+  locker: boolean;
+  petRestrictions: boolean;
+  shortTermRentalBan: boolean;
+}
+
+/** Equipment the seller rents (common in Ontario); the buyer assumes the contract unless negotiated otherwise. */
+export interface RentalItem {
+  item: string;
+  monthly: number;
+  buyoutCost: number;
 }
 
 export interface Property {
   type: PropertyType;
-  address: { street: string; city: string; stateCode: string; zip: string };
+  address: { street: string; municipality: string; province: "ON"; postalCode: string };
+  style: string; // "2-storey", "bungalow", "backsplit", "apartment"
   beds: number;
   baths: number;
   sqft: number;
-  lotAcres: number;
+  lotFrontageFt: number | null;
+  lotDepthFt: number | null;
+  acres: number | null;
   yearBuilt: number;
   condition: 1 | 2 | 3 | 4 | 5; // 1 = needs major work, 5 = like new
-  stories: number;
-  garage: string;
+  basement: "finished" | "unfinished" | "apartment" | "none";
+  parking: string;
   heating: string;
   cooling: string;
-  water: "public" | "well";
-  sewer: "public" | "septic";
+  water: "municipal" | "well" | "lake";
+  sewer: "municipal" | "septic";
   features: string[];
-  hoa: Hoa | null;
-  units: Unit[] | null; // multifamily only
+  condo: CondoInfo | null;
+  /** Monthly fee for a freehold town on a common elements condominium (POTL). */
+  potlFee: number | null;
+  units: Unit[] | null;
+  rentalItems: RentalItem[];
   annualTaxes: number;
   listPrice: number;
   originalListPrice: number;
   daysOnMarket: number;
   priceHistory: { date: string; event: string; price: number }[];
-  /** Type-specific facts: lot rent, flip tax, builder name, zoning, etc. */
+  /** Whether the seller filled out a Seller Property Information Statement (optional in Ontario). */
+  spisProvided: boolean;
+  /** Type-specific facts: lot fee, builder, zoning, road access, etc. */
   extras: Record<string, string | number | boolean>;
 }
 
@@ -94,7 +114,7 @@ export interface Comp {
   baths: number;
   sqft: number;
   daysOnMarket: number;
-  distanceMiles: number;
+  distanceKm: number;
   notes: string;
 }
 
@@ -103,7 +123,7 @@ export interface Disclosure {
   detail: string;
 }
 
-/** Extra deal terms this property type brings into the negotiation. */
+/** Extra terms this property type brings into the negotiation. */
 export interface TypeSpecificTerm {
   key: string;
   label: string;
@@ -113,7 +133,6 @@ export interface TypeSpecificTerm {
 // ---------- Confidential client briefs ----------
 
 export interface Preferences {
-  // Relative weights, summing to 1. Used by the utility function in later build steps.
   price: number;
   timing: number;
   certainty: number;
@@ -123,52 +142,53 @@ export interface Preferences {
 
 export interface ClientBriefBase {
   side: Side;
-  motivation: string; // machine key, e.g. "relocation"
+  motivation: string;
   urgency: 1 | 2 | 3 | 4 | 5;
   preferences: Preferences;
-  earliestClose: string; // ISO date
+  /** Completion (closing) window. */
+  earliestClose: string;
   latestClose: string;
   idealClose: string;
 }
 
 export interface SellerBrief extends ClientBriefBase {
   side: "seller";
-  /** Lowest price the seller will sign at, before any credits. Enforced in code. */
+  /** Lowest price the seller will sign at, net of any rental buyouts they agree to pay. Enforced in code. */
   reservationPrice: number;
-  /** Most they'll give back in credits and repairs combined. */
-  maxConcessions: number;
   mortgagePayoff: number;
-  needsRentBackDays: number; // 0 = none
-  willingToFinanceRepairs: boolean;
-  acceptableLoanTypes: LoanType[];
-  /** Whether they'll accept a buyer whose purchase depends on selling another home. */
-  acceptsHomeSaleContingency: boolean;
+  minDepositPct: number;
+  /** Longest condition period (banking days) the seller will accept on any condition. */
+  maxConditionDays: number;
+  acceptsSaleCondition: boolean;
+  /** The seller has bought another home firm, so their completion window is fixed. */
+  boughtElsewhere: boolean;
 }
 
 export interface BuyerBrief extends ClientBriefBase {
   side: "buyer";
-  /** Highest price the buyer will sign at. Enforced in code. */
+  /** Highest price the buyer will sign at, net of any rental buyouts the seller pays. Enforced in code. */
   reservationPrice: number;
   preapprovalAmount: number | null; // null for cash
-  loanType: LoanType;
+  financing: FinancingType;
   downPaymentPct: number;
-  /** Cash available beyond down payment and closing costs; limits appraisal-gap coverage. */
   cashReserves: number;
   maxAppraisalGapCoverage: number;
-  homeToSell: { status: "none" | "listed" | "under_contract" | "not_yet_listed"; equity: number } | null;
+  firstTimeBuyer: boolean;
+  homeToSell: { status: "none" | "listed" | "sold_firm" | "not_yet_listed"; equity: number } | null;
+  /** The buyer can't buy without first selling their home. */
+  needsSaleCondition: boolean;
   leaseEndsOn: string | null;
   mustHaves: string[];
-  willingToWaive: ("inspection" | "appraisal" | "financing")[];
+  willingToWaive: ("inspection" | "financing" | "status_certificate")[];
 }
 
 export type ClientBrief = SellerBrief | BuyerBrief;
 
-/** Words the LLM writes for a client brief. */
 export interface ClientStory {
   clientNames: string;
   backstory: string;
   motivationStory: string;
-  whatTheyveToldYou: string; // first-person-ish notes from the client meeting
+  whatTheyveToldYou: string;
   softSpots: string[];
   nonNegotiables: string[];
   quirks: string[];
@@ -185,22 +205,25 @@ export interface Finding {
   severity: Severity;
   repairCostLow: number;
   repairCostHigh: number;
-  disclosed: boolean; // was it already in the seller's disclosures?
+  disclosed: boolean;
   sellerKnew: boolean;
-  detectableBy: "general_inspection" | "specialist" | "walkthrough";
+  /** Which process reveals it. */
+  source: "home_inspection" | "status_certificate" | "water_septic" | "lawyer";
+  /** Insurers may refuse or surcharge coverage until it's fixed (knob-and-tube, oil tanks). */
+  affectsInsurance: boolean;
 }
 
 export interface LoanEvent {
   id: string;
-  kind: "rate_lock_expiry" | "dti_issue" | "employment_change" | "underwriting_condition" | "condo_project_review" | "loan_denial";
-  dayOffset: number; // days after contract acceptance
+  kind: "income_verification" | "rate_hold_expiry" | "debt_ratios" | "insurer_decline" | "condo_review" | "mortgage_declined";
+  dayOffset: number;
   severity: "nuisance" | "delay" | "deal_threatening";
   summary: string;
 }
 
 export interface TitleIssue {
   id: string;
-  kind: "unreleased_lien" | "missing_heir" | "boundary_encroachment" | "hoa_lien" | "judgment_lien" | "easement";
+  kind: "work_order" | "open_permit" | "encroachment" | "unregistered_easement" | "estate_trustee_needed" | "construction_lien" | "execution";
   resolvable: boolean;
   daysToResolve: number;
   summary: string;
@@ -213,7 +236,7 @@ export interface Surprise {
 }
 
 export interface CompetingOffer {
-  arrivesDay: number; // days after the scenario starts (pre-contract) or after acceptance (backup/kick-out)
+  arrivesDay: number;
   phase: "pre_contract" | "under_contract";
   strength: "weak" | "comparable" | "strong";
   price: number;
@@ -221,18 +244,19 @@ export interface CompetingOffer {
 
 export interface ClientEvent {
   side: Side;
-  phase: "negotiation" | "inspection" | "closing";
+  phase: "negotiation" | "conditional" | "completion";
   summary: string;
 }
 
 export interface GroundTruth {
   marketValue: number;
+  /** What the lender's appraiser would support for this property. */
   appraisedValue: number;
   inspectionFindings: Finding[];
   typeSpecificIssues: Finding[];
   financing: LoanEvent[];
   titleIssues: TitleIssue[];
-  walkthroughSurprises: Surprise[];
+  visitSurprises: Surprise[];
   competingOffers: CompetingOffer[];
   clientEvents: ClientEvent[];
 }
@@ -245,13 +269,12 @@ export interface HiddenDifficulty {
   /** -1 = user's client holds the leverage, +1 = the bot's client does. */
   leverage: number;
   temperament: "collaborative" | "professional" | "cagey" | "hardball";
-  /** 0 = concedes in tiny steps, 1 = generous steps. */
   concessionPace: number;
-  bluffing: "never" | "subtle" | "active";
+  /** How much the agent keeps to itself. It never misrepresents (RECO Code of Ethics). */
+  withholding: "open" | "reserved" | "guarded";
   clientVolatility: "steady" | "nervous" | "erratic";
   eventVolatility: "clean" | "typical" | "rough";
   dealSpace: DealSpace;
-  /** Overall label shown in the debrief. */
   rating: "easy" | "moderate" | "hard" | "brutal";
 }
 
@@ -264,7 +287,7 @@ export interface AgentPersona {
   dealsPerYear: number;
   voice: string;
   signaturePhrases: string[];
-  publicBio: string; // what the user can see
+  publicBio: string;
 }
 
 // ---------- Scenario ----------
@@ -277,13 +300,12 @@ export interface Narrative {
   sellerStory: ClientStory;
   buyerStory: ClientStory;
   opposingAgent: AgentPersona;
-  /** Initial situation from the user's side: what has happened before the first move. */
   openingSituation: { buyer_agent: string; seller_agent: string };
 }
 
 export interface ScenarioParams {
   seed: number;
-  startDate: string; // the simulated "today" when the scenario begins
+  startDate: string;
   market: Market;
   property: Property;
   comps: Comp[];

@@ -5,22 +5,23 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { Narrative, ScenarioParams } from "../engine/types";
 import { findInventedAmounts } from "../engine/validate";
 import { NarrativeSchema } from "./schema";
-import { LOAN_LABELS, MOTIVATION_LABELS, typeLabel } from "./format";
+import { FINANCING_LABELS, MOTIVATION_LABELS, typeLabel } from "./format";
 
 const MODEL = process.env.SCENARIO_MODEL || "claude-opus-5-5";
 
-const SYSTEM_PROMPT = `You write realistic residential real estate scenarios for a negotiation training simulator used by a working real estate agent.
+const SYSTEM_PROMPT = `You write realistic Ontario residential real estate scenarios for a negotiation training simulator used by a working Ontario real estate salesperson.
 
-A game engine has already decided every fact and number. Your job is to write the human story around them: listing copy, the clients' backstories and private instructions to their agents, and the persona of the opposing agent.
+A game engine has already decided every fact and number. Your job is to write the human story around them: MLS listing copy, the clients' backstories and private instructions to their agents, and the persona of the opposing agent.
 
 Rules:
-- Use only the dollar amounts, dates, and facts in the scenario data. Do not invent new prices, payoffs, appraisal values, repair costs, or other dollar figures. It is fine to round a given figure in casual speech ("about $480k").
-- Hidden ground truth (inspection findings the seller did not disclose, the appraisal, loan problems, title issues) must NOT appear in public listing text or in the opening situations. The seller's private notes may hint at a problem only if the data says the seller knew about it.
-- Public text (headline, remarks, neighborhood, market snapshot, agent bio) must not reveal either client's private limits or motivations beyond what a real listing would say.
-- Each client's "whatTheyveToldYou" is what they said privately to their own agent. It should state their limits (reservation price, closing window, and the other limits in their brief) the way a real client would say them, with emotion and personality.
-- The opposing agent has 30 years of experience and closes 30 to 40 transactions a year. Their voice must match the given temperament. Give them a believable name and a fictional brokerage.
-- Write like a real person. Avoid cliches like "nestled", "boasts", "dream home awaits".
-- Use local color appropriate to the city and state, but keep it plausible and generic enough not to depend on specific real businesses.`;
+- This is Ontario, Canada. Use Ontario terms and practice: brokerages and RECO-registered salespeople and brokers, the Agreement of Purchase and Sale, deposits, conditions, completion dates, real estate lawyers, land transfer tax, status certificates, the SPIS. Never use US terms (escrow, earnest money, title company, HOA, contingency, closing costs credit, Realtor® as a title).
+- All prices are in Canadian dollars. Use only the dollar amounts, dates, and facts in the scenario data. Do not invent new prices, payoffs, appraisal values, repair costs, or other figures. Rounding a given figure in casual speech ("about $1.2 million") is fine.
+- Hidden ground truth (findings the seller did not disclose, the lender's appraisal, mortgage problems, title issues, competing offers) must NOT appear in public listing text or the opening situations. The seller's private notes may mention a problem only if the data says the seller knew about it.
+- Public text (headline, remarks, neighbourhood, market snapshot, agent bio) must not reveal either client's private limits or motivations beyond what a real MLS listing would say. Follow RECO advertising rules: no misleading claims.
+- Each client's "whatTheyveToldYou" is what they said privately to their own agent. State their limits (price, completion window, deposit, condition limits, and anything else in their brief) the way a real client would, with emotion and personality.
+- The opposing agent is a broker with 30 years of experience who closes 30 to 40 transactions a year. Their voice must match the given temperament, and they follow the RECO Code of Ethics. Give them a believable name and a fictional brokerage whose name ends in "Brokerage" (e.g. "Lakeview Realty Inc., Brokerage"). Never use real brokerage names.
+- Write like a real person. Avoid cliches like "nestled", "boasts", "dream home awaits". Use Canadian spelling (neighbourhood, centre).
+- Use local colour that fits the Ontario region, but don't depend on specific real businesses.`;
 
 function buildPrompt(p: ScenarioParams): string {
   const botSide = p.userRole === "buyer_agent" ? "seller" : "buyer";
@@ -34,7 +35,7 @@ function buildPrompt(p: ScenarioParams): string {
     comps: p.comps,
     disclosures: p.disclosures,
     seller: { ...p.seller, motivationDescription: MOTIVATION_LABELS[p.seller.motivation] },
-    buyer: { ...p.buyer, motivationDescription: MOTIVATION_LABELS[p.buyer.motivation], loanDescription: LOAN_LABELS[p.buyer.loanType] },
+    buyer: { ...p.buyer, motivationDescription: MOTIVATION_LABELS[p.buyer.motivation], financingDescription: FINANCING_LABELS[p.buyer.financing] },
     hiddenGroundTruth_DoNotRevealPublicly: {
       undisclosedIssuesSellerKnewAbout: [...p.groundTruth.inspectionFindings, ...p.groundTruth.typeSpecificIssues]
         .filter((f) => f.sellerKnew && !f.disclosed)

@@ -1,4 +1,4 @@
-// How the opposing agent words its moves after the contract. Code decides the move; this writes the message.
+// How the opposing agent words its moves after acceptance. Code decides the move; this writes the message.
 // With an API key, Claude rewrites the draft in the agent's voice, continuing the same conversation.
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -15,21 +15,21 @@ import type { Issue } from "./types";
 const MODEL = process.env.BOT_MODEL || "claude-opus-5-5";
 
 const ISSUE_NOUN: Record<Issue["kind"], string> = {
-  repairs: "the inspection items",
+  repairs: "the findings",
   appraisal: "the appraisal",
-  title: "the title issue",
-  walkthrough: "what we found at the walkthrough",
-  extension: "the closing date",
-  date_change: "the closing date",
-  possession: "possession after closing",
-  loan: "the loan",
-  kickout: "the home-sale contingency",
+  condition_extension: "the condition date",
+  loan: "the mortgage",
+  escape_clause: "the sale-of-property condition",
+  title: "the title requisition",
+  visit: "what came up at the pre-closing visit",
+  extension: "the completion date",
+  date_change: "the completion date",
 };
 
 function amountPhrase(move: BotMove, issue: Issue): string {
-  if (issue.kind === "extension" || issue.kind === "date_change") return move.closingDate ? `closing on ${displayDate(move.closingDate)}` : "";
-  if (issue.kind === "possession") return `${move.amount} days of possession after closing`;
-  const form = move.form === "price_reduction" ? "a price reduction" : move.form === "repairs" ? "repairs done before closing" : "a closing-cost credit";
+  if (issue.kind === "extension" || issue.kind === "date_change") return move.closingDate ? `completion on ${displayDate(move.closingDate)}` : "";
+  if (issue.kind === "condition_extension") return `${move.amount} more banking days`;
+  const form = move.form === "repairs" ? "repairs done before completion" : move.form === "credit" ? "a credit on closing" : "a price reduction by amendment";
   return `${money(move.amount)} as ${form}`;
 }
 
@@ -40,23 +40,24 @@ export function draftMessage(s: Scenario, issue: Issue, move: BotMove): string {
   const noun = ISSUE_NOUN[issue.kind];
   switch (move.kind) {
     case "request":
-      if (issue.kind === "kickout") return `Heads up: we've received another offer, so this is formal notice under the kick-out clause. Your buyers have 72 hours to remove the home-sale contingency or release the contract.`;
-      if (issue.kind === "extension") return `We need to move closing to ${displayDate(move.closingDate!)}. ${issue.detail} Can your clients sign an extension?`;
-      return `About ${noun}: ${Clients} are asking for ${amountPhrase(move, issue)}. ${issue.detail}`;
+      if (issue.kind === "escape_clause") return "This is notice under the escape clause: my sellers have another offer they're prepared to accept. Your buyers have 72 hours to waive the sale-of-property condition, or the agreement ends and the deposit is returned.";
+      if (issue.kind === "extension") return `We need to move completion to ${displayDate(move.closingDate!)}. ${issue.detail} Can your clients sign an amendment?`;
+      if (issue.kind === "condition_extension") return `${Clients} need ${move.amount} more banking days on the condition. ${issue.detail} Will your clients sign an amendment extending it?`;
+      return `About ${noun}: ${Clients} are asking for ${amountPhrase(move, issue)} before they'll waive. ${issue.detail}`;
     case "counter":
       return `${Clients} reviewed it. We can do ${amountPhrase(move, issue)} on ${noun}.`;
     case "accept":
-      if (issue.kind === "kickout") return `${Clients} will remove the home-sale contingency. We're staying in.`;
+      if (issue.kind === "escape_clause") return `${Clients} will waive the sale-of-property condition. We're staying in.`;
       return `${Clients} agree${move.amount || move.closingDate ? ` to ${amountPhrase(move, issue)}` : ""}. I'll send the amendment over for signatures.`;
     case "reject":
       return `${Clients} won't agree to that on ${noun}. That's where they are.`;
     case "withdraw":
-      if (issue.kind === "appraisal") return `Understood. ${Clients} will have to find a way to cover the gap. If they can't, they won't be able to close.`;
+      if (issue.kind === "appraisal") return `Understood. ${Clients} will have to find the cash to cover the shortfall. If they can't, they won't be able to complete.`;
       return `Understood. ${Clients} will move forward without it.`;
     case "terminate":
-      return issue.kind === "kickout"
-        ? `${Clients} can't remove the contingency right now, so we'll release. Sorry it didn't work out.`
-        : `I'm sorry to do this, but ${clients} are terminating under the contract. I'll send the release and the earnest money paperwork.`;
+      return issue.kind === "escape_clause"
+        ? `${Clients} can't waive the condition until their home sells, so the agreement will end. Please have your sellers sign the mutual release so the deposit can go back.`
+        : `I'm sorry, but ${clients} won't be waiving the condition, so the agreement is null and void. I'll send the mutual release for the deposit.`;
     case "wait":
       return "";
   }
@@ -70,7 +71,7 @@ export async function voice(s: Scenario, n: Negotiation, situation: string, deci
   const history = n.llmHistory;
   history.push({
     role: "user",
-    content: `[Under contract] ${situation}\n\nPRIVATE: Your move is already decided: ${decision}\nDraft of what to say: "${draft}"\nRewrite it in your own voice. Keep every number, date and decision exactly as in the draft, don't add new offers, and don't reveal your client's limits.`,
+    content: `[Accepted agreement] ${situation}\n\nPRIVATE: Your move is already decided: ${decision}\nDraft of what to say: "${draft}"\nRewrite it in your own voice. Keep every number, date and decision exactly as in the draft, don't add new offers, and don't reveal your client's limits.`,
   });
   try {
     const stream = new Anthropic().beta.messages.stream({

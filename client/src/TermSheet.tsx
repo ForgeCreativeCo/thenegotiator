@@ -18,7 +18,7 @@ export function TermSheet({ view, negotiation }: { view: UserView; negotiation: 
   if (tx) {
     const original = describeTerms(tx.originalTerms, view.public);
     const current = describeTerms(tx.terms, view.public);
-    const chip = tx.status === "closed" ? ["status-deal", "Closed"] : tx.status === "terminated" ? ["status-dead", tx.outcome?.kind === "terminated" ? "Terminated" : "Default"] : ["status-deal", "Under contract"];
+    const chip = tx.status === "closed" ? ["status-deal", "Completed"] : tx.status === "terminated" ? ["status-dead", { void: "Null and void", terminated: "Terminated", buyer_default: "Buyer default", seller_default: "Seller default", completed: "Completed" }[tx.outcome?.kind ?? "terminated"]] : ["status-deal", tx.firm ? "Firm" : "Conditional"];
     return (
       <>
         <div className={`status-chip ${chip[0]}`}>{chip[1]}</div>
@@ -38,32 +38,33 @@ export function TermSheet({ view, negotiation }: { view: UserView; negotiation: 
             })}
           </tbody>
         </table>
-        <h3>{tx.status === "active" ? "Contingencies" : "Contingencies at the end"}</h3>
-        <dl className="kv small">
-          {(
-            [
-              ["Inspection", tx.contingencies.inspection],
-              ["Appraisal", tx.contingencies.appraisal],
-              ["Financing", tx.contingencies.financing],
-              ["Home sale", tx.contingencies.homeSale],
-            ] as const
-          )
-            .filter(([, state]) => state !== "n/a")
-            .map(([label, state]) => (
-              <Fragment key={label}>
-                <dt>{label}</dt>
-                <dd className={`contingency c-${state}`}>{state}</dd>
+        <h3>Conditions</h3>
+        {tx.conditions.length === 0 ? (
+          <p className="muted small">None. This was a firm deal.</p>
+        ) : (
+          <dl className="kv small">
+            {tx.conditions.map((c) => (
+              <Fragment key={c.key}>
+                <dt>{c.label}</dt>
+                <dd className={`contingency c-${c.status}`}>
+                  {c.status === "pending" ? `pending until ${displayDate(tx.deadlineDates[`condition:${c.key}`])}` : c.status}
+                </dd>
               </Fragment>
             ))}
+          </dl>
+        )}
+        <dl className="kv small">
+          <dt>Status</dt>
+          <dd className="strong">{tx.status !== "active" ? (tx.outcome?.kind === "completed" ? "Completed" : "Ended") : tx.firm ? "Firm" : "Conditional"}</dd>
           {tx.appraisedValue !== null && (
             <>
-              <dt>Appraised value</dt>
+              <dt>Lender's appraisal</dt>
               <dd>{money(tx.appraisedValue)}</dd>
             </>
           )}
           {tx.buyerGapCash > 0 && (
             <>
-              <dt>Buyer's extra cash for the appraisal gap</dt>
+              <dt>Buyer's extra cash for the appraisal shortfall</dt>
               <dd>{money(tx.buyerGapCash)}</dd>
             </>
           )}
@@ -134,17 +135,17 @@ export function TermSheet({ view, negotiation }: { view: UserView; negotiation: 
 
 function MarketFacts({ view }: { view: UserView }) {
   const p = view.public.property;
-  const c = view.public.market.customs;
+  const m = view.public.market;
   return (
     <dl className="kv small facts">
       <dt>List price</dt>
       <dd>{money(p.listPrice)}</dd>
       <dt>Days on market</dt>
       <dd>{p.daysOnMarket}</dd>
-      <dt>Typical earnest money</dt>
-      <dd>{c.typicalEarnestMoneyPct}%</dd>
-      <dt>Closing by</dt>
-      <dd>{{ escrow: "Escrow company", attorney: "Closing attorney", title_company: "Title company" }[c.closing]}</dd>
+      <dt>Typical deposit</dt>
+      <dd>{m.typicalDepositPct}%</dd>
+      <dt>Land transfer tax</dt>
+      <dd>{m.torontoMltt ? "Ontario plus Toronto" : "Ontario"}</dd>
     </dl>
   );
 }
@@ -162,12 +163,11 @@ function calendarRows(tx: TransactionClientView): CalendarRow[] {
   const rows: CalendarRow[] = [];
   const dayState = (day: number): CalendarRow["state"] => (day < tx.day ? "past" : day === tx.day ? "today" : "upcoming");
   for (const e of tx.eventLabels) {
-    if (e.label === "Closing") continue;
     rows.push({ key: `e-${e.label}-${e.day}`, date: e.date, label: e.label, deadline: false, state: dayState(e.day) });
   }
   for (const d of tx.deadlines) {
     const passedUnmet = d.status === "passed";
-    rows.push({ key: `d-${d.id}`, date: tx.deadlineDates[d.id], label: d.label, deadline: d.id !== "closing", state: passedUnmet && d.id !== "closing" ? "missed" : dayState(d.day) });
+    rows.push({ key: `d-${d.id}`, date: tx.deadlineDates[d.id], label: d.label, deadline: d.id !== "completion", state: passedUnmet && d.id !== "completion" ? "missed" : dayState(d.day) });
   }
   return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
