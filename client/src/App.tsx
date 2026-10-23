@@ -77,7 +77,10 @@ export function App() {
                   <span className="muted small">
                     {typeLabel(h.propertyType)} · {money(h.listPrice)}
                   </span>
-                  <span className="muted small">{h.role === "buyer_agent" ? "You: buyer's agent" : "You: listing agent"}</span>
+                  <span className="muted small">
+                    {h.role === "buyer_agent" ? "Buyer's agent" : "Listing agent"}
+                    {h.status !== "negotiating" && <span className={`history-status status-${h.status}`}>{h.status === "under_contract" ? "Under contract" : "Dead"}</span>}
+                  </span>
                 </button>
               </li>
             ))}
@@ -87,7 +90,7 @@ export function App() {
         <section className="content">
           {generating && !view && <Loading />}
           {!view && !generating && <Empty onGenerate={generate} />}
-          {view && <DealFile view={view} />}
+          {view && <DealFile view={view} onNegotiationChange={() => api.listScenarios().then(setHistory).catch(() => {})} />}
         </section>
       </main>
     </div>

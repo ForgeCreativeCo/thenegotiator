@@ -120,6 +120,7 @@ export function generateBriefs(ctx: BriefContext): { seller: SellerBrief; buyer:
 
   // When a deal should be possible, make sure the closing windows overlap by at least a week.
   if (difficulty.dealSpace !== "none") {
+    if (!seller.acceptableLoanTypes.includes(buyer.loanType)) seller.acceptableLoanTypes.push(buyer.loanType);
     if (buyer.latestClose < addDays(seller.earliestClose, 7)) buyer.latestClose = addDays(seller.earliestClose, 7);
     if (seller.latestClose < addDays(buyer.earliestClose, 7)) seller.latestClose = addDays(buyer.earliestClose, 7);
   }
@@ -201,7 +202,7 @@ function generateBuyer(ctx: BriefContext, reservationPrice: number, leverage: nu
   const loanType = pickLoanType(rng, ctx, motivation, reservationPrice);
 
   const downPaymentPct = { cash: 100, conventional: rng.pick([5, 10, 15, 20, 20, 25]), fha: 3.5, va: 0, usda: 0, jumbo: rng.pick([10, 20, 25]) }[loanType];
-  const cashReserves = roundPrice(reservationPrice * (loanType === "cash" ? rng.range(0.02, 0.15) : rng.range(0.005, 0.05)));
+  const cashReserves = roundPrice(reservationPrice * (loanType === "cash" ? rng.range(0.02, 0.15) : rng.range(0.01, 0.05)));
   const preapprovalAmount = loanType === "cash" ? null : roundPrice(reservationPrice * rng.range(1, 1.1));
 
   const hasHomeToSell = (motivation === "move_up" || motivation === "downsizer" || motivation === "relocation") && rng.chance(0.55);

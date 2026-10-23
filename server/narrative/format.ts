@@ -5,6 +5,11 @@ export function money(n: number): string {
   return `$${Math.round(n).toLocaleString("en-US")}`;
 }
 
+export function displayDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
 export function typeLabel(type: PropertyType): string {
   return PROPERTY_TYPES[type].label;
 }

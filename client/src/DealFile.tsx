@@ -1,14 +1,40 @@
-import { useState } from "react";
-import type { UserView } from "./api";
+import { useEffect, useState } from "react";
+import { api, type NegotiationView, type UserView } from "./api";
+import { Negotiation } from "./Negotiation";
+import { TermSheet } from "./TermSheet";
 import type { BuyerBrief, SellerBrief } from "../../server/engine/types";
 import { LOAN_LABELS, MOTIVATION_LABELS, money, typeLabel } from "../../server/narrative/format";
 
 type Tab = "listing" | "comps" | "disclosures" | "client";
 
-export function DealFile({ view }: { view: UserView }) {
+export function DealFile({ view, onNegotiationChange }: { view: UserView; onNegotiationChange?: (n: NegotiationView) => void }) {
   const [tab, setTab] = useState<Tab>("client");
+  const [negotiation, setNegotiation] = useState<NegotiationView | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const p = view.public.property;
   const isBuyerAgent = view.role === "buyer_agent";
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    setNegotiation(null);
+    api
+      .getNegotiation(view.id)
+      .then((r) => {
+        if (cancelled) return;
+        setNegotiation(r.negotiation);
+        setLoaded(true);
+      })
+      .catch(() => !cancelled && setLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [view.id]);
+
+  function update(n: NegotiationView) {
+    setNegotiation(n);
+    onNegotiationChange?.(n);
+  }
 
   return (
     <div className="deal">
@@ -51,47 +77,12 @@ export function DealFile({ view }: { view: UserView }) {
 
         <section className="panel negotiation">
           <h2>Negotiation</h2>
-          <div className="situation">
-            <div className="eyebrow">Where things stand · {formatDate(view.public.startDate)}</div>
-            <p>{view.openingSituation}</p>
-          </div>
-          <div className="agent-card">
-            <div className="avatar">{initials(view.opposingAgent.name)}</div>
-            <div>
-              <div className="agent-name">{view.opposingAgent.name}</div>
-              <div className="muted small">
-                {isBuyerAgent ? "Listing agent" : "Buyer's agent"} · {view.opposingAgent.brokerage}
-              </div>
-              <p className="small">{view.opposingAgent.publicBio}</p>
-            </div>
-          </div>
-          <div className="placeholder">Offers, counters and chat with {view.opposingAgent.name.split(" ")[0]} arrive in build step 2.</div>
+          {loaded ? <Negotiation key={view.id} view={view} negotiation={negotiation} onChange={update} /> : <p className="muted">Loading…</p>}
         </section>
 
         <aside className="panel terms">
           <h2>Term sheet</h2>
-          <dl className="kv">
-            <dt>List price</dt>
-            <dd>{money(p.listPrice)}</dd>
-            {p.originalListPrice !== p.listPrice && (
-              <>
-                <dt>Original list</dt>
-                <dd>{money(p.originalListPrice)}</dd>
-              </>
-            )}
-            <dt>Days on market</dt>
-            <dd>{p.daysOnMarket}</dd>
-            <dt>Typical earnest money</dt>
-            <dd>{view.public.market.customs.typicalEarnestMoneyPct}% of price</dd>
-            <dt>Closing handled by</dt>
-            <dd>{closingLabel(view.public.market.customs.closing)}</dd>
-            {view.public.market.customs.optionPeriod && (
-              <>
-                <dt>Option period</dt>
-                <dd>Customary here</dd>
-              </>
-            )}
-          </dl>
+          <TermSheet view={view} negotiation={negotiation} />
           {view.public.typeSpecificTerms.length > 0 && (
             <>
               <h3>Terms specific to this property</h3>
@@ -104,7 +95,6 @@ export function DealFile({ view }: { view: UserView }) {
               </ul>
             </>
           )}
-          <div className="placeholder small">Live terms and the deal calendar arrive in build steps 2 and 3.</div>
         </aside>
       </div>
     </div>
@@ -387,14 +377,6 @@ function formatExtra(key: string, value: string | number | boolean): string {
     return value.toLocaleString();
   }
   return value;
-}
-
-function closingLabel(c: UserView["public"]["market"]["customs"]["closing"]): string {
-  return { escrow: "Escrow company", attorney: "Closing attorney", title_company: "Title company" }[c];
-}
-
-function initials(name: string): string {
-  return name.split(" ").map((n) => n[0]).slice(0, 2).join("");
 }
 
 function formatDate(iso: string): string {
