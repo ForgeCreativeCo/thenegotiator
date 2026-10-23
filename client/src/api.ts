@@ -3,8 +3,10 @@ import type { ScenarioSummary } from "../../server/db";
 import type { NegotiationView } from "../../server/negotiation/types";
 import type { UserAction } from "../../server/negotiation/engine";
 import type { TxAction } from "../../server/transaction/engine";
+import type { MentorEntry } from "../../server/negotiation/types";
+import type { Debrief } from "../../server/coach/debrief";
 
-export type { UserView, ScenarioSummary, NegotiationView, UserAction, TxAction };
+export type { UserView, ScenarioSummary, NegotiationView, UserAction, TxAction, MentorEntry, Debrief };
 
 export class ApiError extends Error {
   constructor(
@@ -34,5 +36,8 @@ export const api = {
   getNegotiation: (id: string) => request<{ negotiation: NegotiationView | null }>(`/api/scenarios/${id}/negotiation`),
   startNegotiation: (id: string) => post<{ negotiation: NegotiationView }>(`/api/scenarios/${id}/negotiation/start`),
   actTx: (id: string, action: TxAction) => post<{ negotiation: NegotiationView }>(`/api/scenarios/${id}/transaction/actions`, action),
+  mentorLog: (id: string) => request<{ log: MentorEntry[] }>(`/api/scenarios/${id}/mentor`),
+  askMentor: (id: string, question: string) => post<{ log: MentorEntry[] }>(`/api/scenarios/${id}/mentor`, { question }),
+  debrief: (id: string) => request<{ debrief: Debrief }>(`/api/scenarios/${id}/debrief`),
   act: (id: string, action: UserAction) => post<{ negotiation: NegotiationView }>(`/api/scenarios/${id}/negotiation/actions`, action),
 };

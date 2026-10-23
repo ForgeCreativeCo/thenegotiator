@@ -4,14 +4,16 @@ Practice negotiating residential real estate deals against a 30-year veteran age
 
 ## Status
 
-**Build steps 1 to 5 are done**, following Ontario practice under TRESA and the RECO Code of Ethics.
+**Build steps 1 to 6 are done**, following Ontario practice under TRESA and the RECO Code of Ethics.
 
 - **Scenarios**: a random Ontario region (GTA weighted heaviest) and market, any residential type (detached, semi, freehold or condo town, condo apartment, duplex/triplex with tenants, cottage, rural acreage, vacant land, new construction, land-lease home, co-op). You're randomly the buyer's agent or the listing agent, with your client's confidential brief.
 - **Negotiation**: offers and sign-backs structured like the OREA Agreement of Purchase and Sale: price, deposit (herewith or upon acceptance), irrevocable time, completion date, Schedule A conditions in banking days, chattels and fixtures, rental items, pre-closing visits. Your own client refuses to sign anything outside their brief. The opposing agent never misrepresents and tells the truth about competing offers.
 - **Acceptance to completion**: conditions must be waived (Form 123) or fulfilled (Form 124) by their deadlines, or the agreement is null and void and the deposit comes back. Repair negotiations happen by Amendment before waiving. Then firm, title requisitions, pre-closing visits, and completion with land transfer tax (Ontario and Toronto, with first-time buyer refunds) and a statement of adjustments. A buyer who can't complete forfeits the deposit and faces a damages claim.
 - **Offer nights**: in hot GTA-style markets with real competing buyers, the listing holds offers until a review night. Buyers register (and learn the true number of competing offers), may try a pre-emptive bully offer if the listing considers them, and the seller can accept, sign back, or send everyone back to improve once. Offer contents are only disclosed on the seller's written direction (TRESA). You can win, lose to another buyer, or, as the listing agent, sell to a competing buyer.
+- **Mentor**: ask a 30-year broker for advice at any point. It sees only what you see (never the other side), and coaches on Ontario practice and the RECO Code of Ethics. Without an API key it gives rule-based coaching from the deal state.
+- **Debrief**: when a deal ends, both clients' briefs, the hidden facts (findings, appraisal, mortgage and title problems, competing buyers), the difficulty settings, and the opposing agent's reasoning for every move are revealed. You get scores for outcome (where you landed in the deal space), process, and **RECO compliance**: confidential information disclosed, phantom offers or misstated offer counts, offer contents shared without the seller's direction, legal advice, and attempts to go outside your client's instructions, each with the quote that triggered it. A veteran's critique closes it out (written by Claude with an API key).
 
-Next: the mentor and debrief with RECO compliance scoring (step 6).
+Next: deal history and polish (step 7).
 
 ## Setup
 

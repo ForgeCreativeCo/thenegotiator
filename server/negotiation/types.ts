@@ -4,6 +4,7 @@ import type { Terms } from "./terms";
 import type { Transaction } from "../transaction/types";
 import type { TransactionClientView } from "../transaction/engine";
 import type { OfferNightState } from "./offerNight";
+import type { Critique } from "../coach/debrief";
 
 /** lost = the buyer's offer lost on offer night; sold_to_other = the listing side accepted a competing buyer. */
 export type NegotiationStatus = "negotiating" | "under_contract" | "dead" | "lost" | "sold_to_other";
@@ -55,6 +56,28 @@ export interface Negotiation {
   transaction: Transaction | null;
   /** Present when the listing holds offers for an offer night. Absent on older saved negotiations. */
   offerNight?: OfferNightState | null;
+  /** Actions the user tried that their client or the rules refused; the debrief reviews them. */
+  attempts?: RefusedAttempt[];
+  /** Questions to the mentor and the answers. Private to the user; the opposing agent never sees them. */
+  mentorLog?: MentorEntry[];
+  /** Private to the server: the mentor's Claude conversation, append-only. */
+  mentorHistory?: Anthropic.Beta.BetaMessageParam[];
+  /** Cached so the debrief doesn't call Claude again on every view. */
+  debriefCritique?: Critique;
+}
+
+export interface RefusedAttempt {
+  at: number;
+  action: string;
+  message: string;
+  details: string[];
+}
+
+export interface MentorEntry {
+  at: number;
+  question: string;
+  answer: string;
+  source: "claude" | "offline";
 }
 
 /** What the browser receives. */

@@ -302,3 +302,54 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .c-pending { color: var(--warn-text); }
 .c-waived, .c-fulfilled { color: var(--accent); }
 .c-failed { color: var(--error-text); }
+
+/* ---------- Mentor ---------- */
+.role-actions { margin-top: 0.5rem; flex-wrap: wrap; }
+.mentor-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); background: var(--surface); border-left: 1px solid var(--border); box-shadow: -8px 0 30px rgba(0, 0, 0, 0.2); z-index: 9; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.mentor-log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.9rem; }
+.mentor-entry { display: flex; flex-direction: column; gap: 0.35rem; }
+.mentor-q { align-self: flex-end; background: var(--accent); color: var(--accent-contrast); padding: 0.45rem 0.7rem; border-radius: 12px; border-bottom-right-radius: 4px; font-size: 0.9rem; max-width: 90%; }
+.mentor-a { background: var(--surface-2); padding: 0.55rem 0.75rem; border-radius: 12px; border-bottom-left-radius: 4px; font-size: 0.9rem; line-height: 1.55; white-space: pre-wrap; }
+.chip-button { border: 1px solid var(--border); color: var(--text); cursor: pointer; }
+.chip-button:hover { border-color: var(--accent); }
+.mentor-ask { display: flex; gap: 0.5rem; align-items: flex-end; }
+.mentor-ask textarea { flex: 1; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.6rem; }
+
+/* ---------- Debrief ---------- */
+.modal.debrief { width: min(980px, 100%); }
+.debrief-body { display: flex; flex-direction: column; gap: 1.25rem; }
+.debrief-body section h3 { font-size: 1rem; margin-bottom: 0.6rem; }
+.outcome-line { margin-bottom: 0.6rem; }
+.score-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.6rem; }
+.score { border-radius: 10px; padding: 0.6rem 0.75rem; background: var(--surface-2); border-top: 4px solid var(--border); }
+.score-good { border-top-color: var(--accent); }
+.score-ok { border-top-color: var(--warn-text); }
+.score-low { border-top-color: var(--error-text); }
+.score-value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.score-big .score-value { font-size: 2.2rem; }
+.score-label { font-weight: 600; font-size: 0.85rem; }
+.deal-bar { position: relative; height: 70px; margin: 0.5rem 0 0.75rem; border-bottom: 2px solid var(--border); }
+.deal-zone { position: absolute; bottom: 0; height: 18px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 4px 4px 0 0; }
+.marker { position: absolute; bottom: 0; height: 100%; border-left: 2px solid var(--muted); }
+.marker span { position: absolute; left: 4px; white-space: nowrap; font-size: 0.72rem; background: var(--surface); padding: 0 0.2rem; border-radius: 3px; }
+.marker-floor span { top: 0; }
+.marker-ceiling span { top: 16px; }
+.marker-list { border-left-style: dashed; }
+.marker-list span { top: 32px; color: var(--muted); }
+.marker-final { border-left: 3px solid var(--text); }
+.marker-final span { top: 48px; font-weight: 700; }
+.flag-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.flag { border: 1px solid var(--border); border-radius: 8px; padding: 0.55rem 0.7rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.flag-breach { border-color: var(--error-text); }
+.flag-head { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.notes { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; }
+.notes li::before { margin-right: 0.4rem; font-weight: 700; }
+.notes li.good::before { content: "✓"; color: var(--accent); }
+.notes li.bad::before { content: "✕"; color: var(--error-text); }
+.client-reveal { border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem; }
+.client-reveal.yours { border-color: var(--accent); }
+.reasoning { padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.reasoning-note { background: var(--surface-2); border-radius: 6px; padding: 0.3rem 0.5rem; margin-top: 0.2rem; }
+@media (max-width: 820px) {
+  .marker span { font-size: 0.65rem; }
+}

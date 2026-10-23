@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api, type NegotiationView, type UserView } from "./api";
 import { Negotiation } from "./Negotiation";
 import { TermSheet } from "./TermSheet";
+import { MentorPanel } from "./MentorPanel";
+import { DebriefView } from "./DebriefView";
 import type { TransactionClientView } from "../../server/transaction/engine";
 import type { BuyerBrief, SellerBrief } from "../../server/engine/types";
 import { CONDITION_LABELS, FINANCING_LABELS, MOTIVATION_LABELS, money, typeLabel } from "../../server/narrative/format";
@@ -15,6 +17,9 @@ export function DealFile({ view, onNegotiationChange }: { view: UserView; onNego
   const p = view.public.property;
   const isBuyerAgent = view.role === "buyer_agent";
   const reports = negotiation?.transaction?.reports ?? [];
+  const [mentorOpen, setMentorOpen] = useState(false);
+  const [debriefOpen, setDebriefOpen] = useState(false);
+  const finished = negotiation !== null && (["dead", "lost", "sold_to_other"].includes(negotiation.status) || (negotiation.transaction !== null && negotiation.transaction.status !== "active"));
 
   useEffect(() => {
     let cancelled = false;
@@ -52,9 +57,21 @@ export function DealFile({ view, onNegotiationChange }: { view: UserView; onNego
           <div className="eyebrow">Your role</div>
           <div className="role-name">{isBuyerAgent ? "Buyer's agent" : "Listing agent"}</div>
           <div className="muted small">Representing {view.yourClient.story.clientNames}</div>
+          <div className="row role-actions">
+            <button className="secondary" onClick={() => setMentorOpen(true)} disabled={!negotiation}>
+              Ask mentor
+            </button>
+            {finished && (
+              <button className="primary" onClick={() => setDebriefOpen(true)}>
+                Open debrief
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
+      {mentorOpen && <MentorPanel view={view} onClose={() => setMentorOpen(false)} />}
+      {debriefOpen && <DebriefView view={view} onClose={() => setDebriefOpen(false)} />}
       <div className="columns">
         <section className="panel file">
           <nav className="tabs">

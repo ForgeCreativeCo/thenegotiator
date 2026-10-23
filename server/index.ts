@@ -7,6 +7,8 @@ import { ActionError, applyUserAction, offerNightView, startNegotiation, type Us
 import { negotiationView, newNegotiation, type Negotiation } from "./negotiation/types";
 import { applyTxAction, contractSignedNote, transactionClientView, type TxAction } from "./transaction/engine";
 import { createTransaction } from "./transaction/schedule";
+import { askMentor } from "./coach/mentor";
+import { buildDebrief, debriefAvailable } from "./coach/debrief";
 
 /** The negotiation as the browser sees it, including the transaction once under contract. */
 function viewFor(s: Scenario, n: Negotiation) {
@@ -77,6 +79,9 @@ async function withNegotiation(req: express.Request, res: express.Response, work
     res.json({ negotiation: view });
   } catch (error) {
     if (error instanceof ActionError) {
+      // Refused attempts are part of the record the debrief reviews.
+      (negotiation.attempts ??= []).push({ at: negotiation.simHours, action: String((req.body as { type?: string })?.type ?? "unknown"), message: error.message, details: error.details });
+      store.saveNegotiation(negotiation);
       res.status(422).json({ error: error.message, details: error.details });
     } else {
       console.error(error);
@@ -109,6 +114,49 @@ app.post("/api/scenarios/:id/negotiation/actions", (req, res) =>
 );
 
 app.post("/api/scenarios/:id/transaction/actions", (req, res) => withNegotiation(req, res, (s, n) => applyTxAction(s, n, req.body as TxAction)));
+
+// ---------- Mentor and debrief ----------
+
+app.get("/api/scenarios/:id/mentor", (req, res) => {
+  res.json({ log: store.getNegotiation(req.params.id)?.mentorLog ?? [] });
+});
+
+app.post("/api/scenarios/:id/mentor", async (req, res) => {
+  const id = String(req.params.id);
+  const scenario = store.get(id);
+  const negotiation = store.getNegotiation(id);
+  const question = String((req.body as { question?: string })?.question ?? "").trim();
+  if (!scenario || !negotiation) return void res.status(404).json({ error: "Start the negotiation first." });
+  if (!question) return void res.status(422).json({ error: "Ask a question first." });
+  if (busy.has(id)) return void res.status(409).json({ error: "Still working on the last request." });
+  busy.add(id);
+  try {
+    const { answer, source } = await askMentor(scenario, negotiation, question);
+    (negotiation.mentorLog ??= []).push({ at: negotiation.simHours, question, answer, source });
+    store.saveNegotiation(negotiation);
+    res.json({ log: negotiation.mentorLog });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: (error as Error).message });
+  } finally {
+    busy.delete(id);
+  }
+});
+
+app.get("/api/scenarios/:id/debrief", async (req, res) => {
+  const scenario = store.get(req.params.id);
+  const negotiation = store.getNegotiation(req.params.id);
+  if (!scenario || !negotiation) return void res.status(404).json({ error: "Scenario not found" });
+  if (!debriefAvailable(negotiation)) return void res.status(409).json({ error: "The debrief opens when the deal is finished." });
+  try {
+    const debrief = await buildDebrief(scenario, negotiation);
+    store.saveNegotiation(negotiation);
+    res.json({ debrief });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
 
 const port = Number(process.env.API_PORT) || 3001;
 app.listen(port, () => {
