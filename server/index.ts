@@ -5,6 +5,18 @@ import { userView } from "./engine/views";
 import type { Scenario } from "./engine/types";
 import { ActionError, applyUserAction, startNegotiation, type UserAction } from "./negotiation/engine";
 import { negotiationView, newNegotiation, type Negotiation } from "./negotiation/types";
+import { applyTxAction, contractSignedNote, transactionClientView, type TxAction } from "./transaction/engine";
+import { createTransaction } from "./transaction/schedule";
+
+/** The negotiation as the browser sees it, including the transaction once under contract. */
+function viewFor(s: Scenario, n: Negotiation) {
+  if (n.status === "under_contract" && !n.transaction) {
+    const accepted = n.offers.find((o) => o.id === n.acceptedOfferId);
+    if (accepted) n.transaction = createTransaction(s, accepted.terms, n.simHours);
+  }
+  if (n.transaction) contractSignedNote(s, n);
+  return negotiationView(n, n.transaction ? transactionClientView(s, n.transaction) : null);
+}
 
 const app = express();
 const store = new ScenarioStore();
@@ -60,8 +72,9 @@ async function withNegotiation(req: express.Request, res: express.Response, work
   const negotiation = store.getNegotiation(id) ?? newNegotiation(id);
   try {
     await work(scenario, negotiation);
+    const view = viewFor(scenario, negotiation);
     store.saveNegotiation(negotiation);
-    res.json({ negotiation: negotiationView(negotiation) });
+    res.json({ negotiation: view });
   } catch (error) {
     if (error instanceof ActionError) {
       res.status(422).json({ error: error.message, details: error.details });
@@ -75,8 +88,15 @@ async function withNegotiation(req: express.Request, res: express.Response, work
 }
 
 app.get("/api/scenarios/:id/negotiation", (req, res) => {
+  const scenario = store.get(req.params.id);
   const negotiation = store.getNegotiation(req.params.id);
-  res.json({ negotiation: negotiation ? negotiationView(negotiation) : null });
+  if (!scenario || !negotiation) {
+    res.json({ negotiation: null });
+    return;
+  }
+  const view = viewFor(scenario, negotiation);
+  store.saveNegotiation(negotiation);
+  res.json({ negotiation: view });
 });
 
 app.post("/api/scenarios/:id/negotiation/start", (req, res) => withNegotiation(req, res, (s, n) => startNegotiation(s, n)));
@@ -87,6 +107,8 @@ app.post("/api/scenarios/:id/negotiation/actions", (req, res) =>
     await applyUserAction(s, n, req.body as UserAction);
   }),
 );
+
+app.post("/api/scenarios/:id/transaction/actions", (req, res) => withNegotiation(req, res, (s, n) => applyTxAction(s, n, req.body as TxAction)));
 
 const port = Number(process.env.API_PORT) || 3001;
 app.listen(port, () => {

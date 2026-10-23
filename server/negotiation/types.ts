@@ -1,6 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Side } from "../engine/types";
 import type { Terms } from "./terms";
+import type { Transaction } from "../transaction/types";
+import type { TransactionClientView } from "../transaction/engine";
 
 export type NegotiationStatus = "negotiating" | "under_contract" | "dead";
 export type BotAction = "counter" | "accept" | "reject" | "hold" | "walk";
@@ -45,6 +47,8 @@ export interface Negotiation {
   announcedEvents: string[];
   acceptedOfferId: string | null;
   endedBy: "user" | "bot" | null;
+  /** Created at mutual acceptance; runs from contract to closing. */
+  transaction: Transaction | null;
 }
 
 /** What the browser receives. */
@@ -55,12 +59,13 @@ export interface NegotiationView {
   offers: Offer[];
   acceptedOfferId: string | null;
   endedBy: Negotiation["endedBy"];
+  transaction: TransactionClientView | null;
 }
 
-export function negotiationView(n: Negotiation): NegotiationView {
-  return { status: n.status, simHours: n.simHours, messages: n.messages, offers: n.offers, acceptedOfferId: n.acceptedOfferId, endedBy: n.endedBy };
+export function negotiationView(n: Negotiation, transaction: TransactionClientView | null = null): NegotiationView {
+  return { status: n.status, simHours: n.simHours, messages: n.messages, offers: n.offers, acceptedOfferId: n.acceptedOfferId, endedBy: n.endedBy, transaction };
 }
 
 export function newNegotiation(scenarioId: string): Negotiation {
-  return { scenarioId, status: "negotiating", simHours: 0, messages: [], offers: [], botTurns: [], llmHistory: [], announcedEvents: [], acceptedOfferId: null, endedBy: null };
+  return { scenarioId, status: "negotiating", simHours: 0, messages: [], offers: [], botTurns: [], llmHistory: [], announcedEvents: [], acceptedOfferId: null, endedBy: null, transaction: null };
 }

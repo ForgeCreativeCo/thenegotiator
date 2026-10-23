@@ -79,7 +79,7 @@ export function App() {
                   </span>
                   <span className="muted small">
                     {h.role === "buyer_agent" ? "Buyer's agent" : "Listing agent"}
-                    {h.status !== "negotiating" && <span className={`history-status status-${h.status}`}>{h.status === "under_contract" ? "Under contract" : "Dead"}</span>}
+                    {h.status !== "negotiating" && <span className={`history-status status-${h.status}`}>{{ under_contract: "Under contract", closed: "Closed", terminated: "Terminated", dead: "Dead" }[h.status]}</span>}
                   </span>
                 </button>
               </li>

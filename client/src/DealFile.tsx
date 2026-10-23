@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { api, type NegotiationView, type UserView } from "./api";
 import { Negotiation } from "./Negotiation";
 import { TermSheet } from "./TermSheet";
+import type { TransactionClientView } from "../../server/transaction/engine";
 import type { BuyerBrief, SellerBrief } from "../../server/engine/types";
 import { LOAN_LABELS, MOTIVATION_LABELS, money, typeLabel } from "../../server/narrative/format";
 
-type Tab = "listing" | "comps" | "disclosures" | "client";
+type Tab = "listing" | "comps" | "disclosures" | "client" | "reports";
 
 export function DealFile({ view, onNegotiationChange }: { view: UserView; onNegotiationChange?: (n: NegotiationView) => void }) {
   const [tab, setTab] = useState<Tab>("client");
@@ -13,6 +14,7 @@ export function DealFile({ view, onNegotiationChange }: { view: UserView; onNego
   const [loaded, setLoaded] = useState(false);
   const p = view.public.property;
   const isBuyerAgent = view.role === "buyer_agent";
+  const reports = negotiation?.transaction?.reports ?? [];
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +64,7 @@ export function DealFile({ view, onNegotiationChange }: { view: UserView; onNego
                 ["listing", "Listing"],
                 ["comps", "Comps"],
                 ["disclosures", "Disclosures"],
+                ...(reports.length ? ([["reports", `Reports (${reports.length})`]] as const) : []),
               ] as const
             ).map(([key, label]) => (
               <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>
@@ -73,6 +76,7 @@ export function DealFile({ view, onNegotiationChange }: { view: UserView; onNego
           {tab === "listing" && <ListingTab view={view} />}
           {tab === "comps" && <CompsTab view={view} />}
           {tab === "disclosures" && <DisclosuresTab view={view} />}
+          {tab === "reports" && negotiation?.transaction && <ReportsTab tx={negotiation.transaction} />}
         </section>
 
         <section className="panel negotiation">
@@ -308,6 +312,46 @@ function CompsTab({ view }: { view: UserView }) {
       )}
     </div>
   );
+}
+
+function ReportsTab({ tx }: { tx: TransactionClientView }) {
+  const severityLabel = { minor: "Minor", moderate: "Moderate", major: "Major", safety: "Safety" } as const;
+  return (
+    <div className="tab-body">
+      {[...tx.reports].reverse().map((r) => (
+        <section key={r.id} className="report">
+          <div className="report-head">
+            <h3>{r.title}</h3>
+            <span className="muted small">{formatDate(addDaysIso(tx.effectiveDate, r.day))}</span>
+          </div>
+          <p>{r.summary}</p>
+          {r.findings.length > 0 && (
+            <table>
+              <thead>
+                <tr><th>Item</th><th>Severity</th><th className="num">Estimate</th></tr>
+              </thead>
+              <tbody>
+                {r.findings.map((f) => (
+                  <tr key={f.id}>
+                    <td>
+                      {f.title}
+                      <div className="muted small">{f.system}{f.disclosed ? " · disclosed by seller" : ""}{f.detectableBy === "specialist" ? " · found by a specialist" : ""}</div>
+                    </td>
+                    <td><span className={`sev sev-${f.severity}`}>{severityLabel[f.severity]}</span></td>
+                    <td className="num">{f.repairCostHigh ? `${money(f.repairCostLow)}–${money(f.repairCostHigh)}` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function addDaysIso(iso: string, days: number): string {
+  return new Date(Date.parse(`${iso}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 function DisclosuresTab({ view }: { view: UserView }) {

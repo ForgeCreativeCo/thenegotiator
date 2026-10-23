@@ -238,3 +238,46 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   .form-grid { grid-template-columns: 1fr; }
   .transcript { max-height: none; }
 }
+
+/* ---------- Under contract ---------- */
+.tx-panel { display: flex; flex-direction: column; gap: 0.75rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.tx-clock { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; background: var(--surface-2); border-radius: 10px; padding: 0.6rem 0.8rem; }
+.tx-today { font-weight: 700; font-size: 1.05rem; }
+.banner-inline { border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.86rem; }
+.banner-inline.warn { background: var(--warn-bg); color: var(--warn-text); }
+.issue-card { border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 10px; padding: 0.7rem 0.85rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.issue-card.kind-loan, .issue-card.kind-kickout, .issue-card.kind-appraisal { border-left-color: var(--error-text); }
+.issue-card p { margin: 0; }
+.issue-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.pill-warn { background: var(--warn-bg); color: var(--warn-text); font-weight: 600; }
+.guidance { background: var(--accent-soft); color: var(--text); border-radius: 8px; padding: 0.45rem 0.65rem; }
+.proposal-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.issue-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.issue-actions input[type="number"] { width: 8rem; }
+.issue-actions input, .issue-actions select, .inline-form input { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.55rem; }
+.inline-form { display: inline-flex; gap: 0.4rem; align-items: center; }
+.tx-outcome { display: flex; flex-direction: column; gap: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.tx-outcome p { margin: 0; }
+
+.term-table tr.amended td { background: var(--accent-soft); font-weight: 600; }
+.term-table .was { font-weight: 400; }
+.contingency { text-transform: capitalize; font-weight: 600; }
+.c-active { color: var(--accent); }
+.c-expired, .c-waived { color: var(--error-text); }
+.c-satisfied, .c-removed { color: var(--muted); }
+.calendar { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; font-size: 0.84rem; }
+.calendar li { display: grid; grid-template-columns: 6.5rem 1fr; gap: 0.5rem; padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+.cal-date { color: var(--muted); font-variant-numeric: tabular-nums; }
+.cal-past { opacity: 0.55; }
+.cal-today { font-weight: 700; color: var(--accent); }
+.cal-today .cal-date { color: var(--accent); }
+.cal-missed .cal-label { text-decoration: line-through; color: var(--error-text); }
+.cal-deadline { margin-left: 0.4rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--warn-text); background: var(--warn-bg); padding: 0.02rem 0.35rem; border-radius: 4px; }
+
+.report { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; margin-bottom: 0.75rem; }
+.report-head { display: flex; justify-content: space-between; align-items: baseline; }
+.sev { font-size: 0.72rem; font-weight: 700; padding: 0.05rem 0.4rem; border-radius: 999px; background: var(--surface-2); }
+.sev-major, .sev-safety { background: var(--error-bg); color: var(--error-text); }
+.sev-moderate { background: var(--warn-bg); color: var(--warn-text); }
+.history-status.status-closed { background: var(--accent-soft); color: var(--accent); }
+.history-status.status-terminated { background: var(--error-bg); color: var(--error-text); }

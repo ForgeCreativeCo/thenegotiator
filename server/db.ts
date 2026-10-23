@@ -11,7 +11,7 @@ export interface ScenarioSummary {
   stateCode: string;
   propertyType: Scenario["property"]["type"];
   listPrice: number;
-  status: NegotiationStatus;
+  status: NegotiationStatus | "closed" | "terminated";
 }
 
 export class ScenarioStore {
@@ -56,11 +56,11 @@ export class ScenarioStore {
 
   list(limit = 50): ScenarioSummary[] {
     const rows = this.db
-      .prepare("SELECT s.data, json_extract(n.data, '$.status') AS status FROM scenarios s LEFT JOIN negotiations n ON n.scenario_id = s.id ORDER BY s.created_at DESC LIMIT ?")
-      .all(limit) as { data: string; status: NegotiationStatus | null }[];
-    return rows.map(({ data, status }) => {
+      .prepare("SELECT s.data, json_extract(n.data, '$.status') AS status, json_extract(n.data, '$.transaction.status') AS tx_status FROM scenarios s LEFT JOIN negotiations n ON n.scenario_id = s.id ORDER BY s.created_at DESC LIMIT ?")
+      .all(limit) as { data: string; status: NegotiationStatus | null; tx_status: string | null }[];
+    return rows.map(({ data, status, tx_status }) => {
       const s = JSON.parse(data) as Scenario;
-      return { id: s.id, createdAt: s.createdAt, role: s.userRole, city: s.market.city, stateCode: s.market.stateCode, propertyType: s.property.type, listPrice: s.property.listPrice, status: status ?? "negotiating" };
+      return { id: s.id, createdAt: s.createdAt, role: s.userRole, city: s.market.city, stateCode: s.market.stateCode, propertyType: s.property.type, listPrice: s.property.listPrice, status: tx_status === "closed" || tx_status === "terminated" ? tx_status : (status ?? "negotiating") };
     });
   }
 }

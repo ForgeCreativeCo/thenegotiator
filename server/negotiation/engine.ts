@@ -13,6 +13,11 @@ import { offlineTurn, type BotTurn } from "./botOffline";
 import { claudeTurn, type TurnContext } from "./botClaude";
 import type { Negotiation, NegotiationMessage, Offer, UserActionType } from "./types";
 import { hasClaudeCredentials } from "../scenarioService";
+import { createTransaction } from "../transaction/schedule";
+
+function acceptedTerms(n: Negotiation): Terms {
+  return n.offers.find((o) => o.id === n.acceptedOfferId)!.terms;
+}
 
 export interface UserAction {
   type: UserActionType;
@@ -62,7 +67,7 @@ function lastOpenOffer(n: Negotiation, by: Side): Offer | null {
   return offer && offer.status === "open" ? offer : null;
 }
 
-function pushMessage(n: Negotiation, m: Omit<NegotiationMessage, "id" | "at">): NegotiationMessage {
+export function pushMessage(n: Negotiation, m: Omit<NegotiationMessage, "id" | "at">): NegotiationMessage {
   const message = { id: randomUUID(), at: n.simHours, ...m };
   n.messages.push(message);
   return message;
@@ -117,6 +122,7 @@ export async function applyUserAction(s: Scenario, n: Negotiation, action: UserA
       theirOffer.status = "accepted";
       n.acceptedOfferId = theirOffer.id;
       n.status = "under_contract";
+      n.transaction = createTransaction(s, acceptedTerms(n), n.simHours);
       n.endedBy = "user";
       pushMessage(n, { speaker: "user", text: text || "We accept.", action: "accept", offerId: theirOffer.id });
       pushMessage(n, { speaker: "system", text: `Mutual acceptance at ${money(theirOffer.terms.price)}. You're under contract.`, event: "deal" });
@@ -180,6 +186,7 @@ async function runBotTurn(s: Scenario, n: Negotiation, input: Pick<TurnContext, 
       message.offerId = userOffer.id;
       n.acceptedOfferId = userOffer.id;
       n.status = "under_contract";
+      n.transaction = createTransaction(s, acceptedTerms(n), n.simHours);
       n.endedBy = "bot";
       pushMessage(n, { speaker: "system", text: `Mutual acceptance at ${money(userOffer.terms.price)}. You're under contract.`, event: "deal" });
       break;

@@ -5,6 +5,7 @@ import type { Terms } from "../../server/negotiation/terms";
 import { describeTerms } from "../../server/negotiation/terms";
 import { money } from "../../server/narrative/format";
 import { OfferForm } from "./OfferForm";
+import { TransactionPanel } from "./TransactionPanel";
 import { mySide, openOfferFrom, simClock, startingTerms } from "./negotiationUtils";
 
 interface Props {
@@ -134,7 +135,9 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
         </div>
       )}
 
-      {active ? (
+      {negotiation?.transaction ? (
+        <TransactionPanel view={view} tx={negotiation.transaction} onChange={onChange} />
+      ) : active ? (
         <div className="composer">
           <textarea
             rows={2}
@@ -177,7 +180,7 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
       ) : (
         negotiation && (
           <div className={`ended ${negotiation.status === "under_contract" ? "ended-deal" : "ended-dead"}`}>
-            {negotiation.status === "under_contract" ? "You're under contract. The deal moves to due diligence in build step 3." : "This deal is dead. Generate a new scenario to try again."}
+            {negotiation.status === "under_contract" ? "You're under contract." : "This deal is dead. Generate a new scenario to try again."}
           </div>
         )
       )}

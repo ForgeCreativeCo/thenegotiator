@@ -1,7 +1,9 @@
+import { Fragment } from "react";
 import type { NegotiationView, UserView } from "./api";
+import type { TransactionClientView } from "../../server/transaction/engine";
 import { describeTerms } from "../../server/negotiation/terms";
 import { latestOfferBy, mySide } from "./negotiationUtils";
-import { money } from "../../server/narrative/format";
+import { displayDate, money } from "../../server/narrative/format";
 
 /** Side-by-side comparison of each side's latest position, highlighting open issues. */
 export function TermSheet({ view, negotiation }: { view: UserView; negotiation: NegotiationView | null }) {
@@ -12,24 +14,77 @@ export function TermSheet({ view, negotiation }: { view: UserView; negotiation: 
   const accepted = negotiation?.offers.find((o) => o.id === negotiation.acceptedOfferId) ?? null;
   const p = view.public.property;
 
-  if (accepted) {
+  const tx = negotiation?.transaction;
+  if (tx) {
+    const original = describeTerms(tx.originalTerms, view.public);
+    const current = describeTerms(tx.terms, view.public);
+    const chip = tx.status === "closed" ? ["status-deal", "Closed"] : tx.status === "terminated" ? ["status-dead", tx.outcome?.kind === "terminated" ? "Terminated" : "Default"] : ["status-deal", "Under contract"];
     return (
       <>
-        <div className="status-chip status-deal">Under contract</div>
+        <div className={`status-chip ${chip[0]}`}>{chip[1]}</div>
         <table className="term-table">
           <tbody>
-            {describeTerms(accepted.terms, view.public).map((line) => (
-              <tr key={line.key}>
-                <th>{line.label}</th>
-                <td>{line.value}</td>
-              </tr>
-            ))}
+            {current.map((line, i) => {
+              const changed = line.value !== original[i]?.value;
+              return (
+                <tr key={line.key} className={changed ? "amended" : ""}>
+                  <th>{line.label}</th>
+                  <td>
+                    {line.value}
+                    {changed && <div className="muted small was">was {original[i]?.value}</div>}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        <p className="muted small">Inspections, appraisal, financing and closing arrive in build step 3.</p>
+        <h3>{tx.status === "active" ? "Contingencies" : "Contingencies at the end"}</h3>
+        <dl className="kv small">
+          {(
+            [
+              ["Inspection", tx.contingencies.inspection],
+              ["Appraisal", tx.contingencies.appraisal],
+              ["Financing", tx.contingencies.financing],
+              ["Home sale", tx.contingencies.homeSale],
+            ] as const
+          )
+            .filter(([, state]) => state !== "n/a")
+            .map(([label, state]) => (
+              <Fragment key={label}>
+                <dt>{label}</dt>
+                <dd className={`contingency c-${state}`}>{state}</dd>
+              </Fragment>
+            ))}
+          {tx.appraisedValue !== null && (
+            <>
+              <dt>Appraised value</dt>
+              <dd>{money(tx.appraisedValue)}</dd>
+            </>
+          )}
+          {tx.buyerGapCash > 0 && (
+            <>
+              <dt>Buyer's extra cash for the appraisal gap</dt>
+              <dd>{money(tx.buyerGapCash)}</dd>
+            </>
+          )}
+        </dl>
+        <h3>Calendar</h3>
+        <ol className="calendar">
+          {calendarRows(tx).map((row) => (
+            <li key={row.key} className={`cal-${row.state}`}>
+              <span className="cal-date">{displayDate(row.date)}</span>
+              <span className="cal-label">
+                {row.label}
+                {row.deadline && <span className="cal-deadline">deadline</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
       </>
     );
   }
+
+  if (accepted) return null;
 
   if (!mine && !theirs) {
     return (
@@ -92,4 +147,27 @@ function MarketFacts({ view }: { view: UserView }) {
       <dd>{{ escrow: "Escrow company", attorney: "Closing attorney", title_company: "Title company" }[c.closing]}</dd>
     </dl>
   );
+}
+
+interface CalendarRow {
+  key: string;
+  date: string;
+  label: string;
+  deadline: boolean;
+  state: "past" | "today" | "upcoming" | "missed";
+}
+
+/** Deadlines and milestones in date order, marked past, today or upcoming. */
+function calendarRows(tx: TransactionClientView): CalendarRow[] {
+  const rows: CalendarRow[] = [];
+  const dayState = (day: number): CalendarRow["state"] => (day < tx.day ? "past" : day === tx.day ? "today" : "upcoming");
+  for (const e of tx.eventLabels) {
+    if (e.label === "Closing") continue;
+    rows.push({ key: `e-${e.label}-${e.day}`, date: e.date, label: e.label, deadline: false, state: dayState(e.day) });
+  }
+  for (const d of tx.deadlines) {
+    const passedUnmet = d.status === "passed";
+    rows.push({ key: `d-${d.id}`, date: tx.deadlineDates[d.id], label: d.label, deadline: d.id !== "closing", state: passedUnmet && d.id !== "closing" ? "missed" : dayState(d.day) });
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
 }

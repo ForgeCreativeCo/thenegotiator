@@ -2,8 +2,9 @@ import type { UserView } from "../../server/engine/views";
 import type { ScenarioSummary } from "../../server/db";
 import type { NegotiationView } from "../../server/negotiation/types";
 import type { UserAction } from "../../server/negotiation/engine";
+import type { TxAction } from "../../server/transaction/engine";
 
-export type { UserView, ScenarioSummary, NegotiationView, UserAction };
+export type { UserView, ScenarioSummary, NegotiationView, UserAction, TxAction };
 
 export class ApiError extends Error {
   constructor(
@@ -32,5 +33,6 @@ export const api = {
   getScenario: (id: string) => request<{ view: UserView }>(`/api/scenarios/${id}`),
   getNegotiation: (id: string) => request<{ negotiation: NegotiationView | null }>(`/api/scenarios/${id}/negotiation`),
   startNegotiation: (id: string) => post<{ negotiation: NegotiationView }>(`/api/scenarios/${id}/negotiation/start`),
+  actTx: (id: string, action: TxAction) => post<{ negotiation: NegotiationView }>(`/api/scenarios/${id}/transaction/actions`, action),
   act: (id: string, action: UserAction) => post<{ negotiation: NegotiationView }>(`/api/scenarios/${id}/negotiation/actions`, action),
 };
