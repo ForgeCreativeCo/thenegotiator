@@ -378,7 +378,7 @@ async function buyerOfferNightAction(s: Scenario, n: Negotiation, state: OfferNi
       n.simHours += 1;
       state.countDisclosed = true;
       const where = state.phase === "improvement" ? `Improved offers are due by ${simTime(s, state.improvementDeadlineHours!)}` : `We're holding offers until ${simTime(s, state.reviewAtHours)}`;
-      pushMessage(n, { speaker: "bot", text: `${where}. Right now there ${count === 1 ? "is" : "are"} ${plural(count, "other registered offer")}. Get your best in.`, action: "hold" });
+      pushMessage(n, { speaker: "bot", text: `${dot(where)} Right now there ${count === 1 ? "is" : "are"} ${plural(count, "other registered offer")}. Get your best in.`, action: "hold" });
       return;
     }
     case "offer": {

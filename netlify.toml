@@ -1,0 +1,7 @@
+# Netlify: the client builds to dist, the API runs as functions (netlify/functions), data lives in Netlify Blobs.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "24"

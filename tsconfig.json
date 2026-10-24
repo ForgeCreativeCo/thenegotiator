@@ -7,9 +7,10 @@
     "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "isolatedModules": true,
     "types": ["node"]
   },
-  "include": ["server", "client/src", "tests", "vite.config.ts", "vitest.config.ts"]
+  "include": ["server", "client/src", "tests", "netlify", "vite.config.ts", "vitest.config.ts"]
 }

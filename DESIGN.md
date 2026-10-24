@@ -187,3 +187,12 @@ The same three columns. The term sheet becomes an **APS summary**: deposit, irre
 5. ~~Offer nights~~ (built)
 6. ~~Mentor and debrief, with RECO compliance scoring~~ (built)
 7. ~~Deal history and polish~~ (built)
+
+## 12. Hosting
+
+Netlify, private to the project owner (Project visibility: Private). The API is one set of handlers (`server/api/routes.ts`) behind two adapters: Express with SQLite for local dev, Netlify Functions with Blobs when hosted.
+
+- **Reads** answer straight away in the `api` function.
+- **Changes** may call Claude, which can outlast a 60-second function, so each one is a job: claim the deal's lock, queue the job, and return its id. The page starts the `work` background function (up to 15 minutes) and polls the job. A job moves queued → running with a conditional write, so Netlify's retry of a crashed run can't play a turn twice.
+- **Dead runs**: a job still queued after 2 minutes or running after 16 is ended with an error, and its lock frees. A lock older than 16 minutes can be taken over.
+- **Storage**: one Blobs record per deal (scenario plus negotiation), with a summary in its metadata for the past-deals list. Production and previews use separate stores.

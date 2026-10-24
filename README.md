@@ -43,4 +43,24 @@ Without an API key, scenarios still work, but their stories come from a plainer 
 3. **The opposing agent plays within code-enforced limits** (`server/negotiation/`). Each turn, the strategy computes the move it recommends, the most it may concede, and whether accepting or walking is allowed. Claude writes the message and may choose differently, but any counter below its client's floor, any backward move, or any oversized concession is rejected and redone. Without an API key, a template agent plays the recommended move.
 4. **After the contract, code decides the opposing agent's moves** (`server/transaction/`) from its client's limits, and Claude only rewrites the message in the agent's voice. Sellers will give more than their original floor for real defects or a low appraisal, but only so much.
 5. **Ontario rules** live in `server/negotiation/constraints.ts` (who will sign what), `server/transaction/` (conditions, requisitions, completion) and `server/transaction/landTransferTax.ts`.
-6. **Only your view leaves the server** (`server/engine/views.ts`). The other side's brief, ground truth, and difficulty stay in the server's SQLite database (`data/`).
+6. **Only your view leaves the server** (`server/engine/views.ts`). The other side's brief, ground truth, and difficulty stay in server storage: SQLite (`data/`) locally, Netlify Blobs when hosted.
+
+## Hosting on Netlify
+
+The same API runs in two places (`server/api/routes.ts`):
+
+| | Local (`npm run dev`) | Netlify |
+|---|---|---|
+| Server | Express (`server/index.ts`) | Functions: `netlify/functions/api.mts` for every `/api` request, `work.mts` as a background function |
+| Storage | SQLite in `data/` | Netlify Blobs: one record per deal, plus jobs and locks (`server/api/netlify.ts`) |
+| Changes to a deal | Run inline | Queued as a job. The page starts the background function (up to 15 minutes, so long Claude calls fit) and polls `/api/jobs/:id` |
+
+Production uses the Blobs store `negotiator`, and previews and branch deploys use `negotiator-preview`, so a preview never touches real deals.
+
+### Setup
+
+1. In Netlify, add a new project and import this GitHub repo (branch `main`). `netlify.toml` sets the build.
+2. Under Project configuration → Environment variables, add `ANTHROPIC_API_KEY` with its scope including **Functions**. Optionally add `SCENARIO_MODEL` and `BOT_MODEL`.
+3. Under Project configuration → General → Visitor access → Project visibility, make sure it's **Private**. Otherwise anyone with the URL can spend your Claude credits.
+
+Every push to `main` then redeploys.
