@@ -1,5 +1,7 @@
 // Scenario data model for Ontario residential deals. See DESIGN.md section 1 for the four information layers.
 
+import type { ClientFact } from "../client/types";
+
 export type Role = "buyer_agent" | "seller_agent";
 export type Side = "buyer" | "seller";
 
@@ -329,6 +331,8 @@ export interface ScenarioParams {
   difficulty: HiddenDifficulty;
   /** Absent on scenarios created before offer nights existed. */
   offerNight?: OfferNightSetup | null;
+  /** What the user's own client hasn't told them. Hidden until the debrief. Absent on older scenarios. */
+  clientFacts?: ClientFact[];
 }
 
 export interface Scenario extends ScenarioParams {

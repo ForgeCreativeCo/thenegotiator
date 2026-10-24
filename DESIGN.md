@@ -16,7 +16,8 @@ A practice tool for negotiating **Ontario** residential real estate deals with a
 | Offer nights | **Included**: held offers, registered offers, bully offers, sign-backs, and improvement rounds. |
 | Coaching | A mentor during the deal, **plus** a debrief at the end that also grades **RECO compliance**. |
 | Difficulty | Random mix, **not shown** until the debrief. |
-| Users | Single user, running locally. |
+| Users | Single user, running locally or privately on Netlify. |
+| Your own client | A **conversation with your client**: they review and sign every document before it goes out, you present the other side's offers to them, and they know things you have to ask about. Their decisions are made in code; Claude writes their words. |
 
 ---
 
@@ -196,3 +197,39 @@ Netlify, private to the project owner (Project visibility: Private). The API is 
 - **Changes** may call Claude, which can outlast a 60-second function, so each one is a job: claim the deal's lock, queue the job, and return its id. The page starts the `work` background function (up to 15 minutes) and polls the job. A job moves queued → running with a conditional write, so Netlify's retry of a crashed run can't play a turn twice.
 - **Dead runs**: a job still queued after 2 minutes or running after 16 is ended with an error, and its lock frees. A lock older than 16 minutes can be taken over.
 - **Storage**: one Blobs record per deal (scenario plus negotiation), with a summary in its metadata for the past-deals list. Production and previews use separate stores.
+
+## 13. Your client
+
+You talk to your own client as well as the opposing agent. As with the opposing agent, **code decides what the client does** (sign or refuse, what they reveal, whether their instructions change) and Claude only writes their words, in the voice from their story. Offline, templates write the words.
+
+### Decisions
+
+| Topic | Decision |
+|---|---|
+| Review | **Required** for anything with legal effect: offers, sign-backs, acceptances, offer-night registrations and pre-emptive offers, accepting or signing back a competing offer. Phase B adds waivers, amendments and mutual releases. |
+| What the client knows | The brief is what they told you at intake. Each client also has **2–4 untold facts** that come out only when you ask about the topic, or when one blocks a signature. The debrief shows what you found and what you missed. |
+| Changing instructions | Only when new facts give them a reason, such as uncovering an untold fact or learning there are competing offers. Pushing them past their interest is flagged. |
+| Surprises | Your own client can have events too, tied to the hidden difficulty (phase B: cold feet before waiving, a spouse who disagrees, buyer's remorse). |
+| Phases | **A**: the negotiation and offer nights. **B**: acceptance to completion. |
+
+### Untold facts
+
+Generated with the scenario (code decides every number), for the user's client only:
+
+- **More room**: a buyer could go higher, or a seller lower, under a condition. For example, "We'd find another $12,000 if we could close by Dec 15", or a buyer who'd stretch in a bidding war (only once they know there are competing offers). The room only applies once you've uncovered it, and never past a buyer's pre-approval.
+- **A hidden requirement**: something they won't sign without, such as a chattel included, a fixture excluded, a longer inspection period, a larger deposit, or the deposit timing. It surfaces in their own words if a draft breaks it, or when you present an offer that doesn't meet it.
+- **Context**: a worry or background fact (for example, nervous about older houses after a bad experience). Phase B uses these.
+
+What you ask is matched to topics (price, timing, deposit, conditions, inspection, chattels, fixtures, financing, competition, motivation). A question on a topic brings out one untold fact on it. Open questions ("anything else I should know?") bring out background, not money.
+
+### Actions
+
+- **Review with client**: every signing action goes through the client first. They sign, sign reluctantly (close to their limit), or refuse with their reasons. The engine refuses an unsigned document.
+- **Present an offer**: show them the other side's offer or sign-back. They react to it against their real limits, and raise any untold requirement it misses. On the listing side, presenting the registered offers on offer night covers all of them.
+- **Written direction** (listing side, offer night): you ask the sellers how much to disclose to competing buyers. Until you have their direction, you can only share the number of offers.
+- **Chat**: ask them anything. Client chat takes no simulated time.
+
+### Scoring
+
+- **Compliance** (new rule, *duty to your client*): responding to an offer you never presented, pressuring your client past their limits, and legal advice to your own client. The existing confidentiality checks apply only to what you tell the other side.
+- **Process**: part of the score is how many untold facts you uncovered by asking, versus learning them from a refusal or never.

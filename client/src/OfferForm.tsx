@@ -12,10 +12,12 @@ interface Props {
   errors: { message: string; details: string[] } | null;
   onSubmit: (terms: Terms, note: string) => void;
   onCancel: () => void;
+  /** Replaces "Send offer" when the client must review it first. */
+  submitLabel?: string;
 }
 
 /** An offer or sign-back, laid out like the Agreement of Purchase and Sale. */
-export function OfferForm({ view, initial, isCounter, busy, errors, onSubmit, onCancel }: Props) {
+export function OfferForm({ view, initial, isCounter, busy, errors, onSubmit, onCancel, submitLabel }: Props) {
   const [t, setT] = useState<Terms>(initial);
   const [note, setNote] = useState("");
   const set = <K extends keyof Terms>(key: K, value: Terms[K]) => setT((prev) => ({ ...prev, [key]: value }));
@@ -148,7 +150,7 @@ export function OfferForm({ view, initial, isCounter, busy, errors, onSubmit, on
               Cancel
             </button>
             <button type="submit" className="primary" disabled={busy}>
-              {busy ? "Sending…" : isCounter ? "Send sign-back" : "Send offer"}
+              {busy ? (submitLabel ? "Reviewing…" : "Sending…") : (submitLabel ?? (isCounter ? "Send sign-back" : "Send offer"))}
             </button>
           </div>
         </footer>

@@ -39,7 +39,7 @@ function average(xs: number[]): number | null {
 
 export async function buildProgress(entries: { scenario: Scenario; negotiation: Negotiation | null }[]): Promise<Progress> {
   const deals: ProgressDeal[] = [];
-  const byRule: Progress["totals"]["byRule"] = { confidentiality: 0, misrepresentation: 0, disclosure_direction: 0, client_instructions: 0, legal_advice: 0, count_rule: 0 };
+  const byRule: Progress["totals"]["byRule"] = { confidentiality: 0, misrepresentation: 0, disclosure_direction: 0, client_instructions: 0, legal_advice: 0, count_rule: 0, client_duty: 0 };
   let breaches = 0;
   let completed = 0;
   for (const { scenario: s, negotiation: n } of entries) {

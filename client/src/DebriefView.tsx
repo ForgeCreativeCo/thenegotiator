@@ -127,6 +127,22 @@ function DebriefBody({ view, d }: { view: UserView; d: Debrief }) {
         </div>
       </section>
 
+      {d.clientFacts?.length > 0 && (
+        <section>
+          <h3>What your client didn't tell you up front</h3>
+          <ul className="notes">
+            {d.clientFacts.map((f) => (
+              <li key={f.summary} className={f.how === "asked" ? "good" : "bad"}>
+                {f.summary}{" "}
+                <span className="muted small">
+                  {{ asked: "You found out by asking.", presented: "It came up when you presented an offer.", refusal: "You only found out when they refused to sign.", never: "You never found out." }[f.how]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section>
         <h3>What was hidden</h3>
         {d.hidden.findings.length > 0 && (

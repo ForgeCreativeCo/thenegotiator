@@ -5,11 +5,12 @@ import type { Transaction } from "../transaction/types";
 import type { TransactionClientView } from "../transaction/engine";
 import type { OfferNightState } from "./offerNight";
 import type { Critique } from "../coach/debrief";
+import type { ClientState, ClientView } from "../client/types";
 
 /** lost = the buyer's offer lost on offer night; sold_to_other = the listing side accepted a competing buyer. */
 export type NegotiationStatus = "negotiating" | "under_contract" | "dead" | "lost" | "sold_to_other";
 export type BotAction = "counter" | "accept" | "reject" | "hold" | "walk";
-export type UserActionType = "message" | "offer" | "accept" | "walk" | "review" | "improve" | "decline" | "accept_competitor" | "signback_competitor" | "set_disclosure";
+export type UserActionType = "message" | "offer" | "accept" | "walk" | "review" | "improve" | "decline" | "accept_competitor" | "signback_competitor" | "set_disclosure" | "client_message" | "client_review" | "client_present" | "client_direction";
 
 export interface Offer {
   id: string;
@@ -64,6 +65,8 @@ export interface Negotiation {
   mentorHistory?: Anthropic.Beta.BetaMessageParam[];
   /** Cached so the debrief doesn't call Claude again on every view. */
   debriefCritique?: Critique;
+  /** The conversation with the user's own client. Absent on deals saved before it existed. */
+  client?: ClientState;
 }
 
 export interface RefusedAttempt {
@@ -90,6 +93,7 @@ export interface NegotiationView {
   endedBy: Negotiation["endedBy"];
   transaction: TransactionClientView | null;
   offerNight: OfferNightView | null;
+  client: ClientView | null;
 }
 
 export interface OfferNightView {
@@ -107,8 +111,8 @@ export interface OfferNightView {
   outcome: OfferNightState["outcome"];
 }
 
-export function negotiationView(n: Negotiation, transaction: TransactionClientView | null = null, offerNight: OfferNightView | null = null): NegotiationView {
-  return { status: n.status, simHours: n.simHours, messages: n.messages, offers: n.offers, acceptedOfferId: n.acceptedOfferId, endedBy: n.endedBy, transaction, offerNight };
+export function negotiationView(n: Negotiation, transaction: TransactionClientView | null = null, offerNight: OfferNightView | null = null, client: ClientView | null = null): NegotiationView {
+  return { status: n.status, simHours: n.simHours, messages: n.messages, offers: n.offers, acceptedOfferId: n.acceptedOfferId, endedBy: n.endedBy, transaction, offerNight, client };
 }
 
 export function newNegotiation(scenarioId: string): Negotiation {

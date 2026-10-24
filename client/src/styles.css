@@ -412,3 +412,24 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 /* Wide tables scroll inside their panel on small screens instead of widening the page. */
 .tab-body, .offer-night, .debrief-body section { overflow-x: auto; }
+
+/* Your client: conversation tabs, the client panel, and document reviews */
+.convo-tabs { margin: 0; }
+.tab-count { margin-left: 0.4rem; font-size: 0.72rem; background: var(--surface-2); color: var(--muted); border-radius: 999px; padding: 0 0.4rem; }
+.convo-tabs button.active .tab-count { background: var(--surface); }
+.client-panel { display: flex; flex-direction: column; gap: 0.75rem; }
+.client-avatar { background: var(--surface-2); color: var(--text); }
+.learned { border: 1px dashed var(--border); border-radius: 8px; padding: 0.6rem 0.8rem; font-size: 0.9rem; }
+.learned ul { margin: 0.2rem 0 0; padding-left: 1.1rem; }
+.learned li + li { margin-top: 0.3rem; }
+.client-review { border: 1px solid var(--border); border-left: 4px solid var(--accent); background: var(--surface); border-radius: 8px; padding: 0.7rem 0.9rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.client-review.verdict-reluctant { border-left-color: var(--warn-text); }
+.client-review.verdict-refused { border-left-color: var(--error-text); }
+.client-review-head { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.client-review-head .eyebrow { margin: 0; }
+.client-review-quote { margin: 0; font-size: 0.95rem; line-height: 1.5; }
+.client-review ul { margin: 0; padding-left: 1.1rem; color: var(--error-text); }
+.verdict-pill-signed { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.verdict-pill-reluctant { background: var(--warn-bg); color: var(--warn-text); font-weight: 600; }
+.verdict-pill-refused { background: var(--error-bg); color: var(--error-text); font-weight: 600; }
+.small-button { margin-top: 0.45rem; font-size: 0.82rem; padding: 0.25rem 0.6rem; }

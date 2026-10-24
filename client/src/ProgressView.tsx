@@ -13,6 +13,7 @@ const RULE_LABELS: Record<keyof Progress["totals"]["byRule"], string> = {
   client_instructions: "Outside client's instructions",
   legal_advice: "Legal advice",
   count_rule: "Offer count rule",
+  client_duty: "Duty to your client",
 };
 
 /** Progress across practice deals: headline numbers, score trend, compliance breakdown, and every deal. */

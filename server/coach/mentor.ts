@@ -12,6 +12,7 @@ import { termsSummary } from "../negotiation/terms";
 import { transactionClientView } from "../transaction/engine";
 import { dateOf } from "../transaction/schedule";
 import { hasClaudeCredentials } from "../scenarioService";
+import { clientView } from "../client/engine";
 
 const MODEL = process.env.BOT_MODEL || "claude-opus-5-5";
 
@@ -43,6 +44,12 @@ function userContext(s: Scenario, n: Negotiation): string {
     parts.push(`Agreement: ${tx.firm ? "firm" : "conditional"}, completion ${tx.closingDateDisplay}, today ${displayDate(tx.today)}. Conditions: ${tx.conditions.map((c) => `${c.label} ${c.status}${c.status === "pending" ? ` until ${displayDate(tx.deadlineDates[`condition:${c.key}`])}` : ""}`).join("; ") || "none"}. Open issues: ${tx.issues.filter((i) => i.status === "open").map((i) => `${i.title}: ${i.detail}`).join(" | ") || "none"}.`);
   }
   parts.push(`Last messages:\n${n.messages.slice(-10).map((m) => `[${m.speaker === "user" ? "You" : m.speaker === "bot" ? "Other agent" : "Note"}] ${m.text}`).join("\n")}`);
+  // Only what the user has learned from their client. The mentor never knows what the client hasn't said.
+  const client = clientView(s, n);
+  if (client?.messages.length) {
+    if (client.learned.length) parts.push(`What your client has told you since intake: ${client.learned.map((l) => l.says).join(" ")}`);
+    parts.push(`Last messages with your client:\n${client.messages.slice(-6).map((m) => `[${m.speaker === "user" ? "You" : m.speaker === "client" ? "Your client" : "Note"}] ${m.text}`).join("\n")}`);
+  }
   return parts.join("\n\n");
 }
 
@@ -92,6 +99,9 @@ export function offlineAdvice(s: Scenario, n: Negotiation): string {
     } else {
       tips.push(`Their latest is ${money(beyond)} outside your client's limit. They need to move, or you need new instructions from your client before you can.`);
     }
+  }
+  if (n.client?.reviewRequired && !n.client.messages.some((m) => m.kind === "chat")) {
+    tips.push("Sit down with your client before you draft anything. Ask about timing, the deposit, what stays and what goes, and what worries them. Clients rarely tell you everything at the first meeting.");
   }
   if (!mine.length) {
     const comps = s.comps.map((c) => c.soldPrice).sort((a, b) => a - b);

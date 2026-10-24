@@ -7,7 +7,6 @@ import type { Scenario, Side } from "../engine/types";
 import { Rng } from "../engine/rng";
 import { money } from "../narrative/format";
 import { TermsSchema, normalizeTerms, type Terms } from "./terms";
-import { violations } from "./constraints";
 import { botSide, recommend, type Recommendation } from "./strategy";
 import { offlineTurn, type BotTurn } from "./botOffline";
 import { claudeTurn, type TurnContext } from "./botClaude";
@@ -16,6 +15,7 @@ import { sellerViolations } from "./constraints";
 import { botBuyerBid, botBuyerTerms, competitorAccepts, disclosedSummary, improveCompetitors, initOfferNight, offerScore, rankOffers, registeredCompetitors, sellerDecision, type OfferNightState } from "./offerNight";
 import { hasClaudeCredentials } from "../scenarioService";
 import { createTransaction } from "../transaction/schedule";
+import { applyClientAction, clientViolations, isClientAction, requireSignature } from "../client/engine";
 
 function acceptedTerms(n: Negotiation): Terms {
   return n.offers.find((o) => o.id === n.acceptedOfferId)!.terms;
@@ -29,6 +29,10 @@ export interface UserAction {
   preemptive?: boolean;
   competitorId?: string;
   disclosure?: "count_only" | "details";
+  /** client_review: the signing action to put in front of the client. */
+  pending?: UserAction;
+  /** client_present: the other side's offer (omit for all offers at the listing side's offer-night review). */
+  offerId?: string;
 }
 
 export class ActionError extends Error {
@@ -100,6 +104,7 @@ export async function applyUserAction(s: Scenario, n: Negotiation, action: UserA
   const mine = userSide(s);
   const theirs = botSide(s);
   const text = (action.text ?? "").trim();
+  if (isClientAction(action.type)) return applyClientAction(s, n, action);
   if (n.offerNight && n.offerNight.phase !== "done") return offerNightAction(s, n, n.offerNight, action, player);
 
   switch (action.type) {
@@ -113,8 +118,9 @@ export async function applyUserAction(s: Scenario, n: Negotiation, action: UserA
       const parsed = TermsSchema.safeParse(action.terms);
       if (!parsed.success) throw new ActionError("Those terms are incomplete.", parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
       const terms = normalizeTerms(parsed.data);
-      const problems = violations(mine, s, terms);
+      const problems = clientViolations(s, n, terms);
       if (problems.length) throw new ActionError(`Your ${sideLabel(mine)} won't sign this.`, problems);
+      requireSignature(s, n, action);
       const theirOffer = lastOpenOffer(n, theirs);
       if (theirOffer) theirOffer.status = "countered";
       const offer: Offer = { id: randomUUID(), by: mine, terms, status: "open", at: n.simHours };
@@ -126,8 +132,9 @@ export async function applyUserAction(s: Scenario, n: Negotiation, action: UserA
     case "accept": {
       const theirOffer = lastOpenOffer(n, theirs);
       if (!theirOffer) throw new ActionError("There's no offer from the other side to accept.");
-      const problems = violations(mine, s, theirOffer.terms);
+      const problems = clientViolations(s, n, theirOffer.terms);
       if (problems.length) throw new ActionError(`Your ${sideLabel(mine)} won't sign this.`, problems);
+      requireSignature(s, n, action);
       theirOffer.status = "accepted";
       n.acceptedOfferId = theirOffer.id;
       n.status = "under_contract";
@@ -261,7 +268,7 @@ async function startOfferNight(s: Scenario, n: Negotiation, state: OfferNightSta
     return;
   }
   const direction = s.offerNight?.sellerDisclosure === "details" ? "disclose the contents of competing offers to the buyers' agents (TRESA)" : "disclose only the number of competing offers";
-  pushMessage(n, { speaker: "system", text: `Offer night: your sellers are holding offers until ${dot(when)} ${pre} Their written direction is to ${direction}.` });
+  pushMessage(n, { speaker: "system", text: n.client?.reviewRequired ? `Offer night: your sellers are holding offers until ${dot(when)} ${pre} Ask your sellers for their written direction on how much to disclose to competing buyers.` : `Offer night: your sellers are holding offers until ${dot(when)} ${pre} Their written direction is to ${direction}.` });
   n.simHours += 3;
   const bully = state.preemptives === "considered" && (s.buyer.urgency >= 4 || s.difficulty.temperament === "hardball");
   if (bully) {
@@ -350,8 +357,9 @@ async function offerNightAction(s: Scenario, n: Negotiation, state: OfferNightSt
     const parsed = TermsSchema.safeParse(action.terms);
     if (!parsed.success) throw new ActionError("Those terms are incomplete.", parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
     const terms = normalizeTerms(parsed.data);
-    const problems = violations(mine, s, terms);
+    const problems = clientViolations(s, n, terms);
     if (problems.length) throw new ActionError(`Your ${sideLabel(mine)} won't sign this.`, problems);
+    requireSignature(s, n, action);
     return terms;
   };
 
@@ -450,6 +458,7 @@ async function sellerOfferNightAction(s: Scenario, n: Negotiation, state: OfferN
       return;
     }
     case "set_disclosure": {
+      if (action.disclosure === "details" && n.client?.reviewRequired && !n.client.direction) throw new ActionError("Ask your sellers for their written direction first. Until you have it, you can only share how many offers there are.");
       if (action.disclosure === "details" && s.offerNight?.sellerDisclosure !== "details") throw new ActionError("Your sellers haven't directed you in writing to disclose the contents of offers. Without that direction, you can only share how many offers there are.");
       state.disclosure = action.disclosure ?? "count_only";
       pushMessage(n, { speaker: "system", text: state.disclosure === "details" ? "On your sellers' written direction, the contents of the offers will be disclosed to every registered buyer." : "Only the number of offers will be disclosed." });
@@ -468,8 +477,9 @@ async function sellerOfferNightAction(s: Scenario, n: Negotiation, state: OfferN
       const offer = botOffer();
       if (!offer) throw new ActionError("There's no offer from that buyer to accept.");
       if (offer.status === "registered" && state.phase === "registration") throw new ActionError("Registered offers are opened at the review. Go to the offer review first.");
-      const problems = violations("seller", s, offer.terms);
+      const problems = clientViolations(s, n, offer.terms);
       if (problems.length) throw new ActionError("Your seller won't sign this.", problems);
+      requireSignature(s, n, action);
       releaseCompetitors(state);
       state.phase = "done";
       state.outcome = { kind: offer.preemptive ? "preemptive_accepted" : "bot_offer_accepted" };
@@ -526,8 +536,9 @@ async function sellerOfferNightAction(s: Scenario, n: Negotiation, state: OfferN
       const c = state.competitors.find((x) => x.id === action.competitorId && x.status === "registered");
       if (!c) throw new ActionError("That offer isn't available.");
       const terms = action.type === "accept_competitor" ? c.terms : parseTerms();
-      const problems = violations("seller", s, terms);
+      const problems = clientViolations(s, n, terms);
       if (problems.length) throw new ActionError("Your seller won't sign this.", problems);
+      if (action.type === "accept_competitor") requireSignature(s, n, action);
       if (action.type === "signback_competitor" && !competitorAccepts(c, terms)) {
         c.status = "released";
         pushMessage(n, { speaker: "system", text: `${c.label}'s buyers declined the sign-back and withdrew.` });
@@ -562,7 +573,7 @@ export function offerNightView(s: Scenario, n: Negotiation): OfferNightView | nu
     preemptives: state.preemptives,
     phase: state.phase,
     disclosure: state.disclosure,
-    sellerDirection: seller ? (s.offerNight?.sellerDisclosure ?? "count_only") : null,
+    sellerDirection: !seller ? null : n.client?.reviewRequired ? n.client.direction : (s.offerNight?.sellerDisclosure ?? "count_only"),
     competingCount: seller || state.countDisclosed ? registeredCompetitors(state, n.simHours).length : null,
     competitors: showCompetitors
       ? visible.map((c) => ({ id: c.id, label: c.label, price: c.terms.price, deposit: c.terms.deposit, conditions: c.terms.conditions.map((x) => x.key), completionDate: c.terms.completionDate, status: c.status, terms: seller ? c.terms : null }))

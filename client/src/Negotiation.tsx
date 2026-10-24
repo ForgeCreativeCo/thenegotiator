@@ -7,6 +7,8 @@ import { CONDITION_LABELS, money } from "../../server/narrative/format";
 import { OfferForm } from "./OfferForm";
 import { TransactionPanel } from "./TransactionPanel";
 import { OfferNightPanel } from "./OfferNightPanel";
+import { ClientPanel } from "./ClientPanel";
+import { ClientReviewCard } from "./ClientReviewCard";
 import { mySide, openOfferFrom, simClock, startingTerms } from "./negotiationUtils";
 
 interface Props {
@@ -15,7 +17,7 @@ interface Props {
   onChange: (n: NegotiationView) => void;
 }
 
-type Pending = "message" | "offer" | "accept" | "walk" | "start" | null;
+type Pending = "message" | "offer" | "accept" | "walk" | "start" | "review" | "present" | null;
 
 export function Negotiation({ view, negotiation, onChange }: Props) {
   const [text, setText] = useState("");
@@ -23,6 +25,9 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
   const [error, setError] = useState<{ message: string; details: string[] } | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [confirmWalk, setConfirmWalk] = useState(false);
+  const [tab, setTab] = useState<"agent" | "client">("agent");
+  const [reviewing, setReviewing] = useState<UserAction | null>(null);
+  const [formTerms, setFormTerms] = useState<Terms | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const started = useRef<string | null>(null);
   const agent = view.opposingAgent;
@@ -32,6 +37,9 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
   const theirOpen = openOfferFrom(negotiation, them);
   const active = negotiation?.status === "negotiating";
   const offers = new Map((negotiation?.offers ?? []).map((o) => [o.id, o]));
+  const client = negotiation?.client ?? null;
+  const clientNames = view.yourClient.story.clientNames;
+  const clientFirst = clientNames.replace(/\s+\S+$/, "");
 
   // Kick off the negotiation the first time this scenario is opened.
   useEffect(() => {
@@ -50,7 +58,7 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [negotiation?.messages.length, pending]);
 
-  async function act(action: UserAction, kind: Exclude<Pending, null>) {
+  async function act(action: UserAction, kind: Exclude<Pending, null>): Promise<boolean> {
     setPending(kind);
     setError(null);
     try {
@@ -59,16 +67,51 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
       setText("");
       setFormOpen(false);
       setConfirmWalk(false);
+      return true;
     } catch (e) {
       const err = e as ApiError;
       setError({ message: err.message, details: err.details ?? [] });
+      return false;
     } finally {
       setPending(null);
     }
   }
 
+  /** Anything with legal effect goes past your client first, when the deal requires it. */
+  async function sign(action: UserAction, kind: Exclude<Pending, null>) {
+    if (!client?.reviewRequired) return act(action, kind);
+    setReviewing(null);
+    if (await act({ type: "client_review", pending: action }, "review")) setReviewing(action);
+  }
+
+  async function present(offerId: string) {
+    if (await act({ type: "client_present", offerId }, "present")) setTab("client");
+  }
+
+  const tabs = client && (
+    <nav className="tabs convo-tabs" aria-label="Conversations">
+      <button className={tab === "agent" ? "active" : ""} onClick={() => setTab("agent")}>
+        {agent.name}
+      </button>
+      <button className={tab === "client" ? "active" : ""} onClick={() => setTab("client")}>
+        Your {me === "buyer" ? "buyers" : "sellers"}: {clientFirst}
+        {client.messages.length > 0 && <span className="tab-count">{client.messages.filter((m) => m.speaker === "client").length}</span>}
+      </button>
+    </nav>
+  );
+
+  if (tab === "client" && negotiation && client) {
+    return (
+      <div className="negotiation-panel">
+        {tabs}
+        <ClientPanel view={view} negotiation={negotiation} onChange={onChange} />
+      </div>
+    );
+  }
+
   return (
     <div className="negotiation-panel">
+      {tabs}
       <div className="transcript" aria-live="polite">
         <div className="situation">
           <div className="eyebrow">Where things stand</div>
@@ -105,13 +148,21 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
                   {m.action && m.action !== "message" && m.action !== "hold" && <span className={`action-tag tag-${m.action}`}>{actionLabel(m.action, Boolean(offer && offer.id !== negotiation.offers[0]?.id))}</span>}
                 </div>
                 {m.text && <div className="bubble">{m.text}</div>}
-                {offer && m.action !== "accept" && <OfferCard offer={offer} view={view} />}
+                {offer && m.action !== "accept" && (
+                  <OfferCard
+                    offer={offer}
+                    view={view}
+                    onPresent={client?.reviewRequired && active && offer.by === them && offer.status === "open" && !client.presented.includes(offer.id) && !pending ? () => present(offer.id) : null}
+                    presented={Boolean(client?.presented.includes(offer.id))}
+                  />
+                )}
               </div>
             </div>
           );
         })}
 
-        {pending && pending !== "start" && pending !== "walk" && (
+        {(pending === "review" || pending === "present") && <div className="typing">{clientFirst} {/ and /.test(clientFirst) ? "are" : "is"} reading it over…</div>}
+        {pending && pending !== "start" && pending !== "walk" && pending !== "review" && pending !== "present" && (
           <div className="bubble-row theirs">
             <div className="avatar small">{initials(agent.name)}</div>
             <div className="typing">
@@ -134,6 +185,30 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
             </ul>
           )}
         </div>
+      )}
+
+      {reviewing && negotiation && (
+        <ClientReviewCard
+          negotiation={negotiation}
+          clientNames={clientNames}
+          action={reviewing}
+          documentLabel={reviewing.type === "accept" ? "acceptance" : negotiation.offers.some((o) => o.by === them) ? "sign-back" : "offer"}
+          agentFirstName={firstName}
+          busy={Boolean(pending)}
+          onSend={async () => {
+            if (await act(reviewing, reviewing.type === "accept" ? "accept" : "offer")) setReviewing(null);
+          }}
+          onRevise={
+            reviewing.terms
+              ? () => {
+                  setFormTerms(structuredClone(reviewing.terms!));
+                  setReviewing(null);
+                  setFormOpen(true);
+                }
+              : null
+          }
+          onDismiss={() => setReviewing(null)}
+        />
       )}
 
       {negotiation?.transaction ? (
@@ -159,12 +234,12 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
             <button className="secondary" disabled={!text.trim() || Boolean(pending)} onClick={() => act({ type: "message", text }, "message")}>
               Send
             </button>
-            <button className="primary" disabled={Boolean(pending)} onClick={() => { setError(null); setFormOpen(true); }}>
+            <button className="primary" disabled={Boolean(pending)} onClick={() => { setError(null); setFormTerms(null); setReviewing(null); setFormOpen(true); }}>
               {negotiation?.offers.length ? "Sign back" : "Write offer"}
             </button>
             {theirOpen && (
-              <button className="accept" disabled={Boolean(pending)} onClick={() => act({ type: "accept", text }, "accept")}>
-                Accept {money(theirOpen.terms.price)}
+              <button className="accept" disabled={Boolean(pending)} onClick={() => sign({ type: "accept", text }, "accept")}>
+                {client?.reviewRequired ? `Review acceptance of ${money(theirOpen.terms.price)}` : `Accept ${money(theirOpen.terms.price)}`}
               </button>
             )}
             {confirmWalk ? (
@@ -191,19 +266,20 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
       {formOpen && (
         <OfferForm
           view={view}
-          initial={startingTerms(view, negotiation)}
+          initial={formTerms ?? startingTerms(view, negotiation)}
           isCounter={Boolean(negotiation?.offers.length)}
-          busy={pending === "offer"}
+          busy={pending === "offer" || pending === "review"}
           errors={error}
+          submitLabel={client?.reviewRequired ? `Review with ${clientFirst}` : undefined}
           onCancel={() => setFormOpen(false)}
-          onSubmit={(terms: Terms, note: string) => act({ type: "offer", terms, text: note }, "offer")}
+          onSubmit={(terms: Terms, note: string) => sign({ type: "offer", terms, text: note }, "offer")}
         />
       )}
     </div>
   );
 }
 
-function OfferCard({ offer, view }: { offer: Offer; view: UserView }) {
+function OfferCard({ offer, view, onPresent, presented }: { offer: Offer; view: UserView; onPresent: (() => void) | null; presented: boolean }) {
   const lines = describeTerms(offer.terms, view.public);
   const headline = lines.filter((l) => ["deposit", "completionDate", "irrevocable"].includes(l.key));
   const conditions = offer.terms.conditions.length ? offer.terms.conditions.map((c) => `${CONDITION_LABELS[c.key].toLowerCase()} (${c.days})`).join(", ") : "none (firm)";
@@ -223,6 +299,12 @@ function OfferCard({ offer, view }: { offer: Offer; view: UserView }) {
           Conditions: <strong>{conditions}</strong>
         </span>
       </div>
+      {onPresent && (
+        <button className="secondary small-button" onClick={onPresent}>
+          Present to your clients
+        </button>
+      )}
+      {presented && <div className="muted small">Presented to your clients</div>}
     </div>
   );
 }

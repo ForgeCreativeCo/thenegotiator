@@ -10,6 +10,8 @@ import { netPrice } from "../negotiation/constraints";
 import type { Negotiation } from "../negotiation/types";
 import { hasClaudeCredentials } from "../scenarioService";
 import { complianceScore, reviewCompliance, type ComplianceFlag } from "./compliance";
+import { clientFacts } from "../client/facts";
+import type { UncoveredHow } from "../client/types";
 
 const MODEL = process.env.BOT_MODEL || "claude-opus-5-5";
 
@@ -36,6 +38,8 @@ export interface Debrief {
     competingOffers: { label: string; price: number; strength: string; conditions: string; status: string }[];
   };
   agentReasoning: { at: number; message: string; note: string; source: string }[];
+  /** What your own client never told you up front, and how (or whether) you found out. */
+  clientFacts: { summary: string; how: UncoveredHow | "never" }[];
   processNotes: { good: boolean; text: string }[];
   compliance: ComplianceFlag[];
   critique: Critique;
@@ -162,6 +166,20 @@ function processNotes(s: Scenario, n: Negotiation): { good: boolean; text: strin
     }
     if (tx.status === "closed") notes.push({ good: true, text: "You got the deal through to completion." });
   }
+
+  // Discovery: what you found out from your own client by asking.
+  const facts = clientFacts(s);
+  if (n.client?.reviewRequired && facts.length) {
+    const how = (id: string) => n.client!.uncovered.find((u) => u.factId === id)?.how ?? "never";
+    const asked = facts.filter((f) => how(f.id) === "asked").length;
+    const missed = facts.filter((f) => how(f.id) === "never");
+    const late = facts.filter((f) => how(f.id) === "refusal");
+    if (asked * 2 >= facts.length) notes.push({ good: true, text: `You asked the right questions: your client told you ${asked} of the ${facts.length} things they hadn't mentioned up front.` });
+    if (late.length) notes.push({ good: false, text: `You learned about ${late.length === 1 ? "a requirement" : `${late.length} requirements`} only when your client refused to sign. Ask about the deposit, chattels, fixtures and conditions before you draft.` });
+    const missedRoom = missed.filter((f) => f.effect.kind === "room" || f.effect.kind === "room_competition");
+    if (missedRoom.length) notes.push({ good: false, text: `Your client had room you never found out about: ${missedRoom.map((f) => f.summary.replace(/\.$/, "")).join("; ")}.` });
+    else if (missed.length) notes.push({ good: false, text: `Your client had ${missed.length} thing${missed.length === 1 ? "" : "s"} on their mind you never asked about.` });
+  }
   return notes;
 }
 
@@ -189,7 +207,8 @@ const CritiqueSchema = z.object({
 async function claudeCritique(s: Scenario, n: Negotiation, summary: object): Promise<Critique | null> {
   if (!hasClaudeCredentials()) return null;
   try {
-    const transcript = n.messages.map((m) => `[${m.speaker}] ${m.text}`).join("\n");
+    const toClient = (n.client?.messages ?? []).map((m) => `[${m.speaker === "user" ? "user to own client" : m.speaker === "client" ? "own client" : "system"}] ${m.text}`);
+    const transcript = [...n.messages.map((m) => `[${m.speaker}] ${m.text}`), ...toClient].join("\n");
     const stream = new Anthropic().beta.messages.stream({
       model: MODEL,
       max_tokens: 16000,
@@ -247,6 +266,7 @@ export async function buildDebrief(s: Scenario, n: Negotiation, useClaude = true
     buyer: s.buyer,
     difficulty: s.difficulty,
     processNotes: notes,
+    clientFacts: clientFacts(s).map((f) => f.summary),
     complianceFlags: flags.map((f) => ({ title: f.title, quote: f.quote })),
     completionDate: n.transaction ? displayDate(n.transaction.terms.completionDate) : null,
   };
@@ -262,6 +282,7 @@ export async function buildDebrief(s: Scenario, n: Negotiation, useClaude = true
     difficulty: s.difficulty,
     hidden,
     agentReasoning,
+    clientFacts: clientFacts(s).map((f) => ({ summary: f.summary, how: n.client?.uncovered.find((u) => u.factId === f.id)?.how ?? "never" })),
     processNotes: notes,
     compliance: flags,
     critique,

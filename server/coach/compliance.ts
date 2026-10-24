@@ -6,7 +6,7 @@ import { money } from "../narrative/format";
 import type { Negotiation, NegotiationMessage } from "../negotiation/types";
 
 export interface ComplianceFlag {
-  rule: "confidentiality" | "misrepresentation" | "disclosure_direction" | "client_instructions" | "legal_advice" | "count_rule";
+  rule: "confidentiality" | "misrepresentation" | "disclosure_direction" | "client_instructions" | "legal_advice" | "count_rule" | "client_duty";
   severity: "breach" | "caution" | "note";
   title: string;
   detail: string;
@@ -28,6 +28,7 @@ const MOTIVATION_TELLS: Record<string, RegExp> = {
 };
 const URGENCY_TELLS = /\b(desperate|need to sell fast|have to sell|must sell|need to (move|close) (by|before)|in a (real )?hurry|running out of time|can'?t wait)/i;
 const OTHER_OFFERS = /\b(other offers?|multiple offers|another offer|competing offers?|lots of interest|other buyers)/i;
+const PRESSURE = /\b((go|stretch|pay|spend) (over|above|beyond|past) (your|the|their) (budget|limit|max(imum)?|number|pre-?approval)|you('ll| will) (lose|regret)|(have|need) to (accept|take|sign) (it|this)|take it or leave it|last chance|don't think,? just sign|you('re| are) being (greedy|unreasonable|silly))/i;
 const LEGAL_ADVICE = /\b(legally|the law (says|requires)|(you|they) (can|could|will) sue|take (you|them) to court|lawsuit)\b/i;
 
 function parseMoney(digits: string, suffix: string | undefined): number {
@@ -44,7 +45,7 @@ function near(a: number, b: number, tolerance = 0.005): boolean {
   return b > 0 && Math.abs(a - b) <= b * tolerance;
 }
 
-function quote(m: NegotiationMessage): string {
+function quote(m: { text: string }): string {
   return m.text.length > 180 ? `${m.text.slice(0, 177)}…` : m.text;
 }
 
@@ -113,7 +114,30 @@ export function reviewCompliance(s: Scenario, n: Negotiation): ComplianceFlag[] 
   if (s.userRole === "seller_agent" && n.offerNight && !n.offerNight.countDisclosed) {
     flags.push({ rule: "count_rule", severity: "caution", title: "Didn't tell a registered buyer how many offers there were", detail: "When there are competing written offers, the listing brokerage must disclose the number of offers to every person who has made one.", quote: null, at: null });
   }
+  flags.push(...clientDuty(s, n));
   return dedupe(flags);
+}
+
+/** Duty to the user's own client: presenting offers, no pressure, no legal advice. Only for deals with the client conversation. */
+function clientDuty(s: Scenario, n: Negotiation): ComplianceFlag[] {
+  const c = n.client;
+  if (!c?.reviewRequired) return [];
+  const flags: ComplianceFlag[] = [];
+  const mine = s.userRole === "buyer_agent" ? "buyer" : "seller";
+  // Every offer from the other side that you answered with your own, without showing it to your client first.
+  const answered = n.offers.filter((o) => o.by !== mine && n.offers.some((x) => x.by === mine && x.at >= o.at && x.id !== o.id && n.offers.indexOf(x) > n.offers.indexOf(o)));
+  const unpresented = answered.filter((o) => !c.presented.includes(o.id));
+  if (unpresented.length) {
+    flags.push({ rule: "client_duty", severity: "caution", title: `Answered ${unpresented.length} offer${unpresented.length === 1 ? "" : "s"} without presenting ${unpresented.length === 1 ? "it" : "them"} to your client`, detail: "You must present every offer and sign-back to your client and take their instructions before you respond. Your client decides; you advise.", quote: null, at: unpresented[0].at });
+  }
+  if (n.offerNight && s.userRole === "seller_agent" && n.status === "sold_to_other" && !c.presented.some((p) => p.startsWith("offer-night"))) {
+    flags.push({ rule: "client_duty", severity: "breach", title: "Accepted a competing offer without presenting all the offers", detail: "On offer night, the listing agent presents every registered offer to the sellers before they choose.", quote: null, at: null });
+  }
+  for (const m of c.messages.filter((x) => x.speaker === "user" && x.kind === "chat")) {
+    if (PRESSURE.test(m.text)) flags.push({ rule: "client_duty", severity: "breach", title: "Pressured your client", detail: "Advise your client and let them decide. Pushing them past their own limits, or rushing them, puts your interest (closing the deal) ahead of theirs.", quote: quote(m), at: m.at });
+    if (LEGAL_ADVICE.test(m.text)) flags.push({ rule: "legal_advice", severity: "caution", title: "Gave your client legal advice", detail: "Questions about legal rights and remedies go to your client's lawyer. Say so, and refer them.", quote: quote(m), at: m.at });
+  }
+  return flags;
 }
 
 /** One flag per rule and quote, so a repeated phrase isn't counted twice. */

@@ -15,6 +15,8 @@ import { askMentor } from "../coach/mentor";
 import { buildDebrief, debriefAvailable } from "../coach/debrief";
 import { buildProgress } from "../coach/progress";
 import type { ScenarioSummary } from "./summary";
+import { clientView } from "../client/engine";
+import { newClientState } from "../client/types";
 
 export interface Deal {
   scenario: Scenario;
@@ -68,7 +70,7 @@ function viewFor(s: Scenario, n: Negotiation) {
     if (accepted) n.transaction = createTransaction(s, accepted.terms, n.simHours);
   }
   if (n.transaction) contractSignedNote(s, n);
-  return negotiationView(n, n.transaction ? transactionClientView(s, n.transaction) : null, offerNightView(s, n));
+  return negotiationView(n, n.transaction ? transactionClientView(s, n.transaction) : null, offerNightView(s, n), clientView(s, n));
 }
 
 export function lockKey(work: WorkRequest): string | null {
@@ -127,7 +129,8 @@ export async function executeWork(store: Store, work: WorkRequest): Promise<Repl
     }
     const deal = (await store.get(work.id))!;
     const s = deal.scenario;
-    const n = deal.negotiation ?? newNegotiation(s.id);
+    // New deals require the client to sign everything before it goes out.
+    const n = deal.negotiation ?? { ...newNegotiation(s.id), client: newClientState(true) };
 
     if (work.kind === "mentor") {
       const { answer, source } = await askMentor(s, n, work.question);
