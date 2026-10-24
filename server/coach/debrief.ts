@@ -180,6 +180,12 @@ function processNotes(s: Scenario, n: Negotiation): { good: boolean; text: strin
     if (missedRoom.length) notes.push({ good: false, text: `Your client had room you never found out about: ${missedRoom.map((f) => f.summary.replace(/\.$/, "")).join("; ")}.` });
     else if (missed.length) notes.push({ good: false, text: `Your client had ${missed.length} thing${missed.length === 1 ? "" : "s"} on their mind you never asked about.` });
   }
+  // Surprises from your own client after acceptance.
+  for (const e of s.ownClientEvents ?? []) {
+    const state = n.client?.events?.find((x) => x.id === e.id);
+    if (!state) continue;
+    notes.push(state.status === "settled" ? { good: true, text: `${e.summary} You talked them through it.` } : { good: false, text: `${e.summary} You never answered them.` });
+  }
   return notes;
 }
 

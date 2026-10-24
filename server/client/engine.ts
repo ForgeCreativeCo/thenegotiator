@@ -28,14 +28,14 @@ function uncoveredIds(n: Negotiation): string[] {
   return (n.client?.uncovered ?? []).map((u) => u.factId);
 }
 
-function uncover(n: Negotiation, fact: ClientFact, how: UncoveredHow): boolean {
+export function uncover(n: Negotiation, fact: ClientFact, how: UncoveredHow): boolean {
   const c = clientOf(n);
   if (c.uncovered.some((u) => u.factId === fact.id)) return false;
   c.uncovered.push({ factId: fact.id, how, at: n.simHours });
   return true;
 }
 
-function push(n: Negotiation, m: Omit<ClientMessage, "id" | "at">): ClientMessage {
+export function pushClient(n: Negotiation, m: Omit<ClientMessage, "id" | "at">): ClientMessage {
   const message = { id: randomUUID(), at: n.simHours, ...m };
   clientOf(n).messages.push(message);
   return message;
@@ -157,13 +157,13 @@ export async function applyClientAction(s: Scenario, n: Negotiation, action: Use
   switch (action.type) {
     case "client_message": {
       if (!text) throw new ActionError("Write a message first.");
-      push(n, { speaker: "user", text, kind: "chat" });
+      pushClient(n, { speaker: "user", text, kind: "chat" });
       const topics = topicsIn(text);
       const fact = factFor(s, n, topics);
       if (fact) uncover(n, fact, "asked");
       const draft = chatDraft(s, text, topics, fact, competitionKnown(s, n));
       const { text: reply } = await clientVoice(s, n, `[Your agent says] "${text}"`, draft);
-      push(n, { speaker: "client", text: reply, kind: "chat", factId: fact?.id });
+      pushClient(n, { speaker: "client", text: reply, kind: "chat", factId: fact?.id });
       return;
     }
 
@@ -175,19 +175,19 @@ export async function applyClientAction(s: Scenario, n: Negotiation, action: Use
       if (doc.offerId && !c.presented.includes(doc.offerId)) c.presented.push(doc.offerId);
       const verdict = problems.length ? "refused" : nearLimit(s, n, doc.terms) ? "reluctant" : "signed";
       c.signature = verdict === "refused" ? null : { key: doc.key, at: n.simHours };
-      push(n, { speaker: "user", text: text || `Here's the ${doc.label} at ${money(doc.terms.price)} for you to review.`, kind: "review" });
+      pushClient(n, { speaker: "user", text: text || `Here's the ${doc.label} at ${money(doc.terms.price)} for you to review.`, kind: "review" });
       const draft = reviewDraft(s, { verdict, document: doc.label, problems, requirements });
       const { text: reply } = await clientVoice(s, n, `[Your agent asks you to review and sign the ${doc.label}] Price ${money(doc.terms.price)}. ${verdict === "refused" ? `You refuse: ${problems.join("; ")}.` : verdict === "reluctant" ? "You sign, reluctantly." : "You sign."}`, draft);
-      push(n, { speaker: "client", text: reply, kind: "review", verdict, details: problems, factId: requirements.find((r) => r.isNew)?.fact.id });
+      pushClient(n, { speaker: "client", text: reply, kind: "review", verdict, details: problems, factId: requirements.find((r) => r.isNew)?.fact.id });
       return;
     }
 
     case "client_present": {
       const assessment = presentOffers(s, n, action.offerId);
-      push(n, { speaker: "user", text: text || (assessment.count && assessment.count > 1 ? `The registered offers are in. Let's go through all ${assessment.count}.` : `${s.narrative.opposingAgent.name}'s ${assessment.label} came in at ${money(assessment.price)}. Here it is.`), kind: "present", offerId: action.offerId });
+      pushClient(n, { speaker: "user", text: text || (assessment.count && assessment.count > 1 ? `The registered offers are in. Let's go through all ${assessment.count}.` : `${s.narrative.opposingAgent.name}'s ${assessment.label} came in at ${money(assessment.price)}. Here it is.`), kind: "present", offerId: action.offerId });
       const draft = presentDraft(s, assessment);
       const { text: reply } = await clientVoice(s, n, `[Your agent presents the other side's ${assessment.label}] Price ${money(assessment.price)}.`, draft);
-      push(n, { speaker: "client", text: reply, kind: "present", offerId: action.offerId, factId: assessment.missing.find((m) => m.isNew)?.fact.id });
+      pushClient(n, { speaker: "client", text: reply, kind: "present", offerId: action.offerId, factId: assessment.missing.find((m) => m.isNew)?.fact.id });
       return;
     }
 
@@ -195,10 +195,10 @@ export async function applyClientAction(s: Scenario, n: Negotiation, action: Use
       if (userSide(s) !== "seller" || !n.offerNight) throw new ActionError("Written direction on disclosure is for the listing side on offer night.");
       if (c.direction) throw new ActionError(`Your sellers have already given you their direction.`);
       c.direction = s.offerNight?.sellerDisclosure ?? "count_only";
-      push(n, { speaker: "user", text: text || "Other buyers' agents may ask about the competing offers. How much do you want me to disclose? I'll need your direction in writing.", kind: "direction" });
+      pushClient(n, { speaker: "user", text: text || "Other buyers' agents may ask about the competing offers. How much do you want me to disclose? I'll need your direction in writing.", kind: "direction" });
       const { text: reply } = await clientVoice(s, n, "[Your agent asks for your written direction on disclosing competing offers]", directionDraft(s, c.direction));
-      push(n, { speaker: "client", text: reply, kind: "direction" });
-      push(n, { speaker: "system", text: `${names} signed a written direction: ${c.direction === "details" ? "disclose the contents of competing offers" : "disclose the number of offers only"}.`, kind: "direction" });
+      pushClient(n, { speaker: "client", text: reply, kind: "direction" });
+      pushClient(n, { speaker: "system", text: `${names} signed a written direction: ${c.direction === "details" ? "disclose the contents of competing offers" : "disclose the number of offers only"}.`, kind: "direction" });
       return;
     }
 

@@ -212,7 +212,7 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
       )}
 
       {negotiation?.transaction ? (
-        <TransactionPanel view={view} tx={negotiation.transaction} onChange={onChange} />
+        <TransactionPanel view={view} tx={negotiation.transaction} negotiation={negotiation} onChange={onChange} />
       ) : negotiation?.offerNight && negotiation.offerNight.phase !== "done" && active ? (
         <OfferNightPanel view={view} negotiation={negotiation} onChange={onChange} />
       ) : active ? (

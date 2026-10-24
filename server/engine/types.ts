@@ -1,6 +1,6 @@
 // Scenario data model for Ontario residential deals. See DESIGN.md section 1 for the four information layers.
 
-import type { ClientFact } from "../client/types";
+import type { ClientFact, OwnClientEvent } from "../client/types";
 
 export type Role = "buyer_agent" | "seller_agent";
 export type Side = "buyer" | "seller";
@@ -333,6 +333,8 @@ export interface ScenarioParams {
   offerNight?: OfferNightSetup | null;
   /** What the user's own client hasn't told them. Hidden until the debrief. Absent on older scenarios. */
   clientFacts?: ClientFact[];
+  /** Surprises from the user's own client after acceptance. Hidden until they happen. Absent on older scenarios. */
+  ownClientEvents?: OwnClientEvent[];
 }
 
 export interface Scenario extends ScenarioParams {

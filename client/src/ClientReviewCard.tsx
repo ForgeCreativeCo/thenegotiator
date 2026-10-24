@@ -1,25 +1,29 @@
-import type { NegotiationView, UserAction } from "./api";
+import type { NegotiationView } from "./api";
 import { money } from "../../server/narrative/format";
 
 interface Props {
   negotiation: NegotiationView;
   clientNames: string;
-  action: UserAction;
+  /** The document under review: an offer-stage UserAction or a transaction action. */
+  action: { type: string; terms?: { price: number } };
   agentFirstName: string;
   busy: boolean;
   onSend: () => void;
   onRevise: (() => void) | null;
   onDismiss: () => void;
-  /** What the document is called, e.g. "sign-back" or "pre-emptive offer". */
+  /** What the document is called, e.g. "sign-back" or "waiver". */
   documentLabel: string;
+  /** Overrides the send button's label. */
+  sendLabel?: string;
 }
 
 /** The client's answer to "will you sign this?", with the next step: send it, or revise. */
-export function ClientReviewCard({ negotiation, clientNames, action, agentFirstName, busy, onSend, onRevise, onDismiss, documentLabel }: Props) {
+export function ClientReviewCard({ negotiation, clientNames, action, agentFirstName, busy, onSend, onRevise, onDismiss, documentLabel, sendLabel }: Props) {
   const reply = [...(negotiation.client?.messages ?? [])].reverse().find((m) => m.speaker === "client" && m.kind === "review");
   if (!reply) return null;
   const signed = reply.verdict !== "refused";
   const what = action.terms ? `${money(action.terms.price)} ${documentLabel}` : documentLabel;
+  const send = sendLabel ?? (action.type === "accept" || action.type === "accept_competitor" ? "Send acceptance" : `Send to ${action.type.includes("competitor") ? "that buyer's agent" : agentFirstName}`);
   return (
     <div className={`client-review verdict-${reply.verdict}`} role="status">
       <div className="client-review-head">
@@ -37,7 +41,7 @@ export function ClientReviewCard({ negotiation, clientNames, action, agentFirstN
       <div className="composer-actions">
         {signed && (
           <button className="primary" disabled={busy} onClick={onSend}>
-            {action.type === "accept" || action.type === "accept_competitor" ? "Send acceptance" : `Send to ${action.type.includes("competitor") ? "that buyer's agent" : agentFirstName}`}
+            {send}
           </button>
         )}
         {onRevise && (

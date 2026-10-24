@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, api, type NegotiationView, type UserAction, type UserView } from "./api";
+import { ApiError, api, type NegotiationView, type TxAction, type UserAction, type UserView } from "./api";
 import { money } from "../../server/narrative/format";
 import { mySide, simClock } from "./negotiationUtils";
 
@@ -21,22 +21,31 @@ export function ClientPanel({ view, negotiation, onChange }: Props) {
   const names = view.yourClient.story.clientNames;
   const firstNames = names.replace(/\s+\S+$/, "");
   const me = mySide(view);
-  const active = negotiation.status === "negotiating";
+  const tx = negotiation.transaction;
+  const inTransaction = Boolean(tx && tx.status === "active");
+  const active = negotiation.status === "negotiating" || inTransaction;
+  // After acceptance: the other side's latest requests and counters, not yet shown to the client.
+  const toPresent = inTransaction
+    ? tx!.issues.filter((i) => {
+        const last = i.proposals[i.proposals.length - 1];
+        return i.status === "open" && last && last.by !== me && !client.presented.includes(`issue:${i.id}:${last.id}`);
+      })
+    : [];
   const night = negotiation.offerNight && negotiation.offerNight.phase !== "done" ? negotiation.offerNight : null;
   const theirs = [...negotiation.offers].reverse().find((o) => o.by !== me && (o.status === "open" || o.status === "registered"));
-  const canPresentOne = active && theirs && !client.presented.includes(theirs.id) && !(night && me === "seller" && theirs.status === "registered");
-  const canPresentAll = active && night && me === "seller" && (night.phase === "review" || night.phase === "final_review") && !client.presented.includes(`offer-night:${night.phase}`);
-  const canAskDirection = active && night && me === "seller" && !client.direction;
+  const canPresentOne = !inTransaction && active && theirs && !client.presented.includes(theirs.id) && !(night && me === "seller" && theirs.status === "registered");
+  const canPresentAll = !inTransaction && active && night && me === "seller" && (night.phase === "review" || night.phase === "final_review") && !client.presented.includes(`offer-night:${night.phase}`);
+  const canAskDirection = !inTransaction && active && night && me === "seller" && !client.direction;
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [client.messages.length, busy]);
 
-  async function act(action: UserAction) {
+  async function act(action: UserAction | TxAction) {
     setBusy(true);
     setError(null);
     try {
-      onChange((await api.act(view.id, action)).negotiation);
+      onChange((inTransaction ? await api.actTx(view.id, action as TxAction) : await api.act(view.id, action as UserAction)).negotiation);
       setText("");
     } catch (e) {
       setError((e as ApiError).message);
@@ -120,6 +129,11 @@ export function ClientPanel({ view, negotiation, onChange }: Props) {
                 Present all the offers
               </button>
             )}
+            {toPresent.map((issue) => (
+              <button key={issue.id} className="primary" disabled={busy} onClick={() => act({ type: "client_present", issueId: issue.id })}>
+                Present: {issue.title}
+              </button>
+            ))}
             {canAskDirection && (
               <button className="secondary" disabled={busy} onClick={() => act({ type: "client_direction" })}>
                 Ask for written direction on disclosure
@@ -128,7 +142,7 @@ export function ClientPanel({ view, negotiation, onChange }: Props) {
           </div>
         </div>
       ) : (
-        <p className="muted small">The conversation with your client after acceptance is coming in a later update.</p>
+        <p className="muted small">This deal is finished.</p>
       )}
     </div>
   );

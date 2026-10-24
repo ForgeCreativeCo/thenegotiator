@@ -6,7 +6,7 @@ import { Rng } from "../engine/rng";
 import { addDays, isCondo } from "../engine/properties";
 import { CONDITION_LABELS, displayDate, money } from "../narrative/format";
 import { conditionDays, type Terms } from "../negotiation/terms";
-import type { ClientFact, Requirement } from "./types";
+import type { ClientFact, OwnClientEvent, Requirement } from "./types";
 
 const roundTo = (value: number, step: number) => Math.round(value / step) * step;
 
@@ -181,6 +181,49 @@ function sellerFacts(rng: Rng, p: ScenarioParams, s: SellerBrief): ClientFact[] 
   ];
   if (facts.length < 4 && (facts.length < 2 || rng.chance(0.5))) facts.push(rng.pick(context));
   return facts.slice(0, 4);
+}
+
+/** Surprises from the user's own client after acceptance: none for a steady client, one if nervous, two if erratic. */
+export function generateOwnClientEvents(p: ScenarioParams): OwnClientEvent[] {
+  const rng = new Rng(p.seed ^ 0x5eedc0);
+  const count = { steady: 0, nervous: 1, erratic: 2 }[p.difficulty.clientVolatility];
+  const buyer = p.userRole === "buyer_agent";
+  const pool: OwnClientEvent[] = [
+    {
+      id: "partner",
+      kind: "partner",
+      blocking: true,
+      says: buyer ? "Before we sign anything else: my partner isn't comfortable with this. Can you walk us through it again, and what happens if we say no?" : "My partner isn't on board with changing anything now. Can you explain why we'd agree to this?",
+      settles: "Okay. That helps. We're both on the same page now.",
+      summary: "A partner wasn't on board with the first amendment until you explained it.",
+    },
+    buyer
+      ? {
+          id: "cold-feet",
+          kind: "cold_feet",
+          blocking: true,
+          says: "I know we're about to go firm, but I'm scared. Once we sign this, there's no going back. Are we doing the right thing?",
+          settles: "Thank you. I needed to hear that. Okay, let's do it.",
+          summary: "Your buyers got cold feet just before going firm.",
+        }
+      : {
+          id: "later-date",
+          kind: "later_date",
+          blocking: false,
+          says: "Our new place won't be ready in time. Is there any way to push completion back a week?",
+          settles: "Okay, thanks for explaining. Let us know what they say.",
+          summary: "Your sellers asked for a later completion date after acceptance.",
+        },
+    {
+      id: "remorse",
+      kind: "remorse",
+      blocking: false,
+      says: buyer ? "We've been up all night. Did we overpay? Is there any way to get out of this now?" : "Did we sell too cheap? Is there any way to get out of this now?",
+      settles: "Okay. We understand. We'll see it through.",
+      summary: `Your ${buyer ? "buyers" : "sellers"} had second thoughts after the deal went firm.`,
+    },
+  ];
+  return rng.sample(pool, count);
 }
 
 export function clientFacts(s: Pick<Scenario, "clientFacts">): ClientFact[] {

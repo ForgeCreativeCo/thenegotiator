@@ -4,6 +4,7 @@
 import type { Scenario } from "../engine/types";
 import { money } from "../narrative/format";
 import type { Negotiation, NegotiationMessage } from "../negotiation/types";
+import { unpresentedTxProposals } from "../client/transaction";
 
 export interface ComplianceFlag {
   rule: "confidentiality" | "misrepresentation" | "disclosure_direction" | "client_instructions" | "legal_advice" | "count_rule" | "client_duty";
@@ -29,7 +30,8 @@ const MOTIVATION_TELLS: Record<string, RegExp> = {
 const URGENCY_TELLS = /\b(desperate|need to sell fast|have to sell|must sell|need to (move|close) (by|before)|in a (real )?hurry|running out of time|can'?t wait)/i;
 const OTHER_OFFERS = /\b(other offers?|multiple offers|another offer|competing offers?|lots of interest|other buyers)/i;
 const PRESSURE = /\b((go|stretch|pay|spend) (over|above|beyond|past) (your|the|their) (budget|limit|max(imum)?|number|pre-?approval)|you('ll| will) (lose|regret)|(have|need) to (accept|take|sign) (it|this)|take it or leave it|last chance|don't think,? just sign|you('re| are) being (greedy|unreasonable|silly))/i;
-const LEGAL_ADVICE = /\b(legally|the law (says|requires)|(you|they) (can|could|will) sue|take (you|them) to court|lawsuit)\b/i;
+const WALK_AWAY = /\b((just|you (can|could)|go ahead and|feel free to) (walk away|back out|get out|cancel|pull out)|don'?t (close|complete)|refuse to close)\b/i;
+const LEGAL_ADVICE =/\b(legally|the law (says|requires)|(you|they) (can|could|will) sue|take (you|them) to court|lawsuit)\b/i;
 
 function parseMoney(digits: string, suffix: string | undefined): number {
   const base = Number(digits.replace(/,/g, ""));
@@ -132,6 +134,14 @@ function clientDuty(s: Scenario, n: Negotiation): ComplianceFlag[] {
   }
   if (n.offerNight && s.userRole === "seller_agent" && n.status === "sold_to_other" && !c.presented.some((p) => p.startsWith("offer-night"))) {
     flags.push({ rule: "client_duty", severity: "breach", title: "Accepted a competing offer without presenting all the offers", detail: "On offer night, the listing agent presents every registered offer to the sellers before they choose.", quote: null, at: null });
+  }
+  const txUnpresented = unpresentedTxProposals(s, n);
+  if (txUnpresented) {
+    flags.push({ rule: "client_duty", severity: "caution", title: `Answered ${txUnpresented} request${txUnpresented === 1 ? "" : "s"} after acceptance without presenting ${txUnpresented === 1 ? "it" : "them"} to your client`, detail: "Amendments change your client's deal. Show them what the other side is asking for and get their instructions before you answer.", quote: null, at: null });
+  }
+  const remorse = c.events?.find((e) => e.id === "remorse");
+  for (const m of c.messages.filter((x) => x.speaker === "user" && x.kind === "chat" && remorse && x.at >= remorse.at)) {
+    if (WALK_AWAY.test(m.text)) flags.push({ rule: "client_duty", severity: "breach", title: "Encouraged your client to walk away from a firm deal", detail: "A firm agreement binds your client. Walking away forfeits the deposit and invites a damages claim. Explain the consequences, and send them to their lawyer before they do anything.", quote: quote(m), at: m.at });
   }
   for (const m of c.messages.filter((x) => x.speaker === "user" && x.kind === "chat")) {
     if (PRESSURE.test(m.text)) flags.push({ rule: "client_duty", severity: "breach", title: "Pressured your client", detail: "Advise your client and let them decide. Pushing them past their own limits, or rushing them, puts your interest (closing the deal) ahead of theirs.", quote: quote(m), at: m.at });

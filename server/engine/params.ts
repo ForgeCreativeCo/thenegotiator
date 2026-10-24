@@ -6,7 +6,7 @@ import { generateMarket } from "./markets";
 import { PROPERTY_TYPES, generateProperty, isoDate } from "./properties";
 import { generateBriefs, generateDifficulty } from "./briefs";
 import { buildDisclosures, generateComps, generateFindings, generateGroundTruth } from "./groundTruth";
-import { generateClientFacts } from "../client/facts";
+import { generateClientFacts, generateOwnClientEvents } from "../client/facts";
 
 export interface GenerateOptions {
   seed?: number;
@@ -54,7 +54,7 @@ export function generateParams(options: GenerateOptions = {}): ScenarioParams {
     difficulty,
     offerNight: generateOfferNight(seed, market.offerNightsCommon, market.temperature, groundTruth.competingOffers.filter((o) => o.phase === "pre_contract").length),
   };
-  return { ...params, clientFacts: generateClientFacts(params) };
+  return { ...params, clientFacts: generateClientFacts(params), ownClientEvents: generateOwnClientEvents(params) };
 }
 
 /** Hot GTA-style listings with real competing interest hold offers until a review night. Uses its own random stream. */

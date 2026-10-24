@@ -4,23 +4,37 @@ import type { ConditionState, Issue, Proposal } from "../../server/transaction/t
 import type { TransactionClientView } from "../../server/transaction/engine";
 import { displayDate, money } from "../../server/narrative/format";
 import { mySide } from "./negotiationUtils";
+import { ClientReviewCard } from "./ClientReviewCard";
+
+/** Documents the client signs before they go out. Declining or dropping a request is an instruction, not a signature. */
+const SIGNED = ["condition", "release", "request_condition_extension", "request_date_change", "propose", "accept"];
+
+function documentLabel(a: TxAction): string {
+  if (a.type === "condition") return a.how === "waive" ? "waiver" : "notice of fulfilment";
+  if (a.type === "release") return "mutual release";
+  if (a.type === "propose") return "proposal";
+  return "amendment";
+}
 
 interface Props {
   view: UserView;
   tx: TransactionClientView;
+  negotiation: NegotiationView;
   onChange: (n: NegotiationView) => void;
 }
 
 /** After acceptance: the clock, conditions, open issues, and chat. */
-export function TransactionPanel({ view, tx, onChange }: Props) {
+export function TransactionPanel({ view, tx, negotiation, onChange }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; details: string[] } | null>(null);
   const [text, setText] = useState("");
   const [dateChange, setDateChange] = useState<string | null>(null);
   const me = mySide(view);
   const other = view.opposingAgent.name.split(" ")[0];
+  const [reviewing, setReviewing] = useState<{ action: TxAction; label: string } | null>(null);
+  const reviewRequired = Boolean(negotiation.client?.reviewRequired);
 
-  async function act(action: TxAction, label: string) {
+  async function send(action: TxAction, label: string): Promise<boolean> {
     setBusy(label);
     setError(null);
     try {
@@ -28,12 +42,24 @@ export function TransactionPanel({ view, tx, onChange }: Props) {
       onChange(result.negotiation);
       setText("");
       setDateChange(null);
+      return true;
     } catch (e) {
       const err = e as ApiError;
       setError({ message: err.message, details: err.details ?? [] });
+      return false;
     } finally {
       setBusy(null);
     }
+  }
+
+  /** Signed documents go past your client first, when the deal requires it. */
+  async function act(action: TxAction, label: string) {
+    if (!reviewRequired || !SIGNED.includes(action.type)) {
+      await send(action, label);
+      return;
+    }
+    setReviewing(null);
+    if (await send({ type: "client_review", pending: action }, "review")) setReviewing({ action, label });
   }
 
   if (tx.status !== "active") return <Outcome view={view} tx={tx} />;
@@ -44,6 +70,10 @@ export function TransactionPanel({ view, tx, onChange }: Props) {
     ...open.filter((i) => i.deadlineDay === tx.day && !i.conditionKey).map((i) => i.title.toLowerCase()),
   ];
   const pending = tx.conditions.filter((c) => c.status === "pending");
+  const unpresented = open.filter((i) => {
+    const last = i.proposals[i.proposals.length - 1];
+    return last && last.by !== me && !(negotiation.client?.presented ?? []).includes(`issue:${i.id}:${last.id}`);
+  });
 
   return (
     <div className="tx-panel">
@@ -80,9 +110,32 @@ export function TransactionPanel({ view, tx, onChange }: Props) {
       )}
 
       {open.length === 0 && pending.length === 0 && <p className="muted small">Nothing needs your attention right now. Move the calendar forward to keep the deal moving.</p>}
+      {reviewRequired && unpresented.length > 0 && (
+        <div className="guidance small">
+          Present {unpresented.map((i) => i.title.toLowerCase()).join(" and ")} to your {me === "buyer" ? "buyers" : "sellers"} before you answer. Use the conversation tab with them.
+        </div>
+      )}
       {open.map((issue) => (
         <IssueCard key={`${issue.id}-${issue.proposals.length}`} issue={issue} view={view} tx={tx} busy={Boolean(busy)} other={other} onAct={act} />
       ))}
+
+      {busy === "review" && <div className="typing">Your {me === "buyer" ? "buyers are" : "sellers are"} reading it over…</div>}
+      {reviewing && (
+        <ClientReviewCard
+          negotiation={negotiation}
+          clientNames={view.yourClient.story.clientNames}
+          action={reviewing.action}
+          agentFirstName={other}
+          documentLabel={documentLabel(reviewing.action)}
+          sendLabel={reviewing.action.type === "release" ? "Deliver the release" : reviewing.action.type === "condition" ? "Deliver it" : `Send to ${other}`}
+          busy={Boolean(busy)}
+          onSend={async () => {
+            if (await send(reviewing.action, reviewing.label)) setReviewing(null);
+          }}
+          onRevise={null}
+          onDismiss={() => setReviewing(null)}
+        />
+      )}
 
       {error && (
         <div className="form-error">

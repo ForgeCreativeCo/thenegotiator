@@ -233,3 +233,19 @@ What you ask is matched to topics (price, timing, deposit, conditions, inspectio
 
 - **Compliance** (new rule, *duty to your client*): responding to an offer you never presented, pressuring your client past their limits, and legal advice to your own client. The existing confidentiality checks apply only to what you tell the other side.
 - **Process**: part of the score is how many untold facts you uncovered by asking, versus learning them from a refusal or never.
+
+### Phase B: after acceptance
+
+- **Signatures**: waivers (Form 123), notices of fulfilment (Form 124), mutual releases, and every amendment (repair or price proposals, accepting the other side's proposal, condition extensions, completion date changes) go past the client first, the same way as offers. Declining or dropping a request is an instruction, not a signature.
+- **What the client decides** (in code):
+  - Waiving financing before the mortgage commitment: they sign, reluctantly.
+  - Waiving the inspection with serious findings unresolved: they sign reluctantly, or refuse if they're nervous about repairs (an untold background fact, which the refusal brings out).
+  - A mutual release with no reason (no open issue, no serious findings, no mortgage or appraisal problem): they refuse. They still want the house, or the sale.
+  - Amendments: their limits after acceptance, as before.
+- **Presenting**: the other side's requests and counters on an issue are presented to the client before you answer them.
+- **Surprises from your own client**, by the hidden client volatility (steady: none; nervous: one; erratic: two):
+  - *Cold feet* (buyer): refuses the last waiver that would make the deal firm, until you talk it through with them.
+  - *A partner who isn't on board*: refuses the first amendment until you talk it through.
+  - *Second thoughts after firm*: messages you unprompted, asking whether they can get out. Encouraging them to walk away from a firm deal is flagged; it means a lost deposit and a damages claim.
+  - *A later date* (seller): messages you unprompted after acceptance, asking for a later completion.
+  - Any reply to the client settles a blocking surprise. The debrief notes surprises you never answered.

@@ -35,6 +35,20 @@ export interface ClientFact {
 
 export type UncoveredHow = "asked" | "refusal" | "presented";
 
+/** A surprise from the user's own client after acceptance, set by the hidden client volatility. */
+export interface OwnClientEvent {
+  id: string;
+  kind: "cold_feet" | "partner" | "remorse" | "later_date";
+  /** cold_feet and partner block the next signature until the agent talks it through; the others are unprompted messages. */
+  blocking: boolean;
+  /** The client's words when it happens. */
+  says: string;
+  /** The client's words once the agent has talked to them. */
+  settles: string;
+  /** Third person, for the debrief. */
+  summary: string;
+}
+
 export interface ClientMessage {
   id: string;
   at: number;
@@ -61,6 +75,8 @@ export interface ClientState {
   direction: "count_only" | "details" | null;
   /** Private to the server: the client's Claude conversation, append-only. */
   llmHistory: Anthropic.Beta.BetaMessageParam[];
+  /** Surprises that have happened (absent until the first one). */
+  events?: { id: string; status: "active" | "settled"; at: number }[];
 }
 
 /** What the browser sees: the conversation and what you've learned, never the facts still untold. */

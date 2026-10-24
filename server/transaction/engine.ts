@@ -28,6 +28,7 @@ import { cmhcPremiumRate, landTransferTax } from "./landTransferTax";
 import { draftMessage, voice } from "./voice";
 import type { ConditionState, Issue, IssueKind, Outcome, Proposal, Report, ScheduledEvent, Settlement, Transaction, TransactionView } from "./types";
 import { transactionView } from "./types";
+import { applyTxClientAction, requireTxSignature, txClientTriggers } from "../client/transaction";
 
 export type TxAction =
   | { type: "advance"; mode: "next" | "day" }
@@ -39,7 +40,10 @@ export type TxAction =
   | { type: "release"; key: string; text?: string }
   | { type: "request_condition_extension"; key: ConditionKey; days: number; text?: string }
   | { type: "request_date_change"; closingDate: string; text?: string }
-  | { type: "message"; text: string };
+  | { type: "message"; text: string }
+  | { type: "client_message"; text: string }
+  | { type: "client_review"; pending: TxAction }
+  | { type: "client_present"; issueId: string };
 
 export type Voice = typeof voice;
 
@@ -596,6 +600,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
   const tx = n.transaction;
   if (!tx) throw new ActionError("This deal isn't under agreement.");
   if (tx.status !== "active") throw new ActionError("This deal is finished.");
+  if (action.type === "client_message" || action.type === "client_review" || action.type === "client_present") return applyTxClientAction(s, n, action);
   const me = userSide(s);
   const them: Side = me === "buyer" ? "seller" : "buyer";
   const text = ("text" in action ? action.text : "")?.trim() ?? "";
@@ -616,6 +621,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
           if (!e.fired && e.day <= d) fireEvent(s, n, tx, e);
         }
         await botActs(s, n, tx, speak);
+        await txClientTriggers(s, n);
       }
       return;
     }
@@ -636,6 +642,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
       if (action.how === "fulfil" && action.key === "financing" && tx.loanStatus !== "approved") throw new ActionError("Your buyers don't have a mortgage commitment yet, so the financing condition isn't fulfilled. You can only waive it, and that puts the deposit at risk if the mortgage falls through.");
       if (action.how === "fulfil" && action.key === "sale_of_property" && !tx.buyerHomeSold) throw new ActionError("Your buyers' home hasn't sold yet, so the condition isn't fulfilled.");
       if (action.key === "sale_of_property" && action.how === "waive" && !tx.buyerHomeSold && s.buyer.needsSaleCondition) throw new ActionError("Your buyers won't waive the sale condition before their home sells. They can't carry two properties.");
+      requireTxSignature(s, n, action);
       say(`${action.how === "waive" ? "Waiver" : "Notice of Fulfilment"} on the ${condition.label.toLowerCase()} condition is attached.`, "accept");
       setCondition(s, n, tx, action.key, action.how === "waive" ? "waived" : "fulfilled");
       break;
@@ -644,6 +651,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
       if (me !== "buyer") throw new ActionError("Only the buyer can end the deal under a condition.");
       const option = releaseOptions(tx).find((o) => o.key === action.key);
       if (!option) throw new ActionError("That isn't available. Walking away without a condition would put your buyers in default.");
+      requireTxSignature(s, n, action);
       say("My buyers won't be waiving. Please have your sellers sign the mutual release.", "walk");
       if (tx.issues.some((i) => i.id === action.key)) end(s, n, tx, { kind: "terminated", reason: "The buyer wouldn't waive a valid title objection the seller couldn't answer, so the agreement ends.", deposit: "returned_to_buyer", damagesExposure: null });
       else failCondition(s, n, tx, action.key as ConditionKey, `The buyer chose not to waive the ${option.label.toLowerCase()}.`);
@@ -654,6 +662,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
       const condition = pendingCondition(tx, action.key);
       if (!condition) throw new ActionError("That condition isn't pending.");
       const days = Math.max(1, Math.round(action.days));
+      requireTxSignature(s, n, action);
       const issue = openIssue(tx, "condition_extension", "buyer", { detail: text || `More time on the ${condition.label.toLowerCase()} condition.`, reference: days, conditionKey: action.key, deadlineDay: condition.deadlineDay });
       issue.proposals.push({ id: randomUUID(), by: me, day: tx.day, kind: "request", amount: days, closingDate: null, form: null, note: text });
       say(`Can we extend the ${condition.label.toLowerCase()} condition by ${days} banking days?`, "offer");
@@ -662,6 +671,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
     case "request_date_change": {
       const objections = userClientObjections(s, tx, { kind: "date_change", id: "new" }, me, 0, action.closingDate);
       if (objections.length) throw new ActionError("Your clients won't sign that.", objections);
+      requireTxSignature(s, n, action);
       const issue = openIssue(tx, "date_change", me, { detail: text || `Move completion to ${displayDate(action.closingDate)}.`, neededDate: action.closingDate });
       issue.proposals.push({ id: randomUUID(), by: me, day: tx.day, kind: "request", amount: 0, closingDate: action.closingDate, form: null, note: text });
       say(`We'd like to move completion to ${displayDate(action.closingDate)}.`, "offer");
@@ -676,6 +686,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
       const amount = Math.max(0, Math.round(action.amount ?? 0));
       const objections = userClientObjections(s, tx, issue, me, isDate ? 0 : amount, isDate ? action.closingDate! : null);
       if (objections.length) throw new ActionError("Your clients won't sign that.", objections);
+      requireTxSignature(s, n, action);
       const form = isMoneyIssue(issue) ? (action.form ?? "price_reduction") : null;
       issue.proposals.push({ id: randomUUID(), by: me, day: tx.day, kind: issue.proposals.length === 0 ? "request" : "counter", amount, closingDate: action.closingDate ?? null, form, note: text });
       const what = isDate ? `completion on ${displayDate(action.closingDate!)}` : issue.kind === "condition_extension" ? `${amount} more banking days` : issue.kind === "escape_clause" ? "notice under the escape clause" : `${money(amount)} ${form === "repairs" ? "in seller repairs" : form === "credit" ? "credit on closing" : "price reduction"}`;
@@ -689,6 +700,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
       if (issue.kind === "escape_clause" && !tx.buyerHomeSold && s.buyer.needsSaleCondition) throw new ActionError("Your buyers can't waive the sale condition before their home sells. They'd be carrying two properties.");
       const objections = userClientObjections(s, tx, issue, me, isMoneyIssue(issue) || issue.kind === "condition_extension" ? theirs.amount : 0, theirs.closingDate);
       if (objections.length) throw new ActionError("Your clients won't sign that.", objections);
+      requireTxSignature(s, n, action);
       const proposal: Proposal = { ...theirs, id: randomUUID(), by: me, day: tx.day, kind: "accept", note: text };
       issue.proposals.push(proposal);
       say(issue.kind === "escape_clause" ? "My buyers will waive the sale-of-property condition." : "Agreed. I'll send the amendment.", "accept");
@@ -713,6 +725,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
     }
   }
   await botActs(s, n, tx, speak);
+  await txClientTriggers(s, n);
 }
 
 /** The deal timeline, posted once when the agreement is accepted. */
