@@ -31,8 +31,9 @@ afterAll(async () => {
 
 const context = (deployContext: string) => ({ deploy: { context: deployContext, id: "d1", published: true } }) as unknown as Context;
 
-async function apiCall(method: string, path: string, body?: unknown, deployContext = "production") {
-  const req = new Request(`http://localhost${path}`, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+async function apiCall(method: string, path: string, body?: unknown, deployContext = "production", player: string | null = "Pat Morgan") {
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...(player ? { "x-player": player } : {}) };
+  const req = new Request(`http://localhost${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const res = await api(req, context(deployContext));
   return { status: res.status, body: (await res.json()) as any };
 }
@@ -73,6 +74,18 @@ describe("Netlify functions on Blobs", () => {
     expect((await apiCall("DELETE", `/api/scenarios/${id}`)).body.deleted).toBe(true);
     expect((await apiCall("GET", "/api/scenarios")).body).toEqual([]);
     expect((await apiCall("GET", "/api/nothing-here")).status).toBe(404);
+  });
+
+  it("keeps each player's deals to themselves, and asks for a name first", async () => {
+    expect((await apiCall("GET", "/api/scenarios", undefined, "production", null)).status).toBe(400);
+    expect((await apiCall("GET", "/api/status", undefined, "production", null)).status).toBe(200);
+    const id = (await doWork({ kind: "create" })).body.view.id;
+    const other = (name: string, method: string, path: string) => apiCall(method, path, undefined, "production", name);
+    expect((await other("Sam Lee", "GET", "/api/scenarios")).body).toEqual([]);
+    expect((await other("Sam Lee", "GET", `/api/scenarios/${id}`)).status).toBe(404);
+    expect((await other("Sam Lee", "DELETE", "/api/scenarios")).body.deleted).toBe(0);
+    // The same name, typed differently, is the same player.
+    expect((await other("  pat MORGAN ", "GET", "/api/scenarios")).body.map((s: { id: string }) => s.id)).toContain(id);
   });
 
   it("refuses a second change to a busy deal", async () => {

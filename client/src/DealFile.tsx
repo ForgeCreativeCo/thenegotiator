@@ -10,7 +10,7 @@ import { CONDITION_LABELS, FINANCING_LABELS, MOTIVATION_LABELS, money, typeLabel
 
 type Tab = "listing" | "comps" | "disclosures" | "client" | "reports";
 
-export function DealFile({ view, onNegotiationChange }: { view: UserView; onNegotiationChange?: (n: NegotiationView) => void }) {
+export function DealFile({ view, onNegotiationChange, finishedDeals = 0 }: { view: UserView; onNegotiationChange?: (n: NegotiationView) => void; finishedDeals?: number }) {
   const [tab, setTab] = useState<Tab>("client");
   const [negotiation, setNegotiation] = useState<NegotiationView | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -98,7 +98,7 @@ export function DealFile({ view, onNegotiationChange }: { view: UserView; onNego
 
         <section className="panel negotiation">
           <h2>Negotiation</h2>
-          {loaded ? <Negotiation key={view.id} view={view} negotiation={negotiation} onChange={update} /> : <p className="muted">Loading…</p>}
+          {loaded ? <Negotiation key={view.id} view={view} negotiation={negotiation} onChange={update} showChecklist={finishedDeals < 3} /> : <p className="muted">Loading…</p>}
         </section>
 
         <aside className="panel terms">

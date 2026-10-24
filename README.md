@@ -13,6 +13,7 @@ Practice negotiating residential real estate deals against a 30-year veteran age
 - **Your client**: a second conversation with your own client. They review and sign every offer, sign-back and acceptance before it goes out, and refuse with their reasons. You present the other side's offers to them, and on offer night the sellers give you their written direction on disclosure. Each client has 2–4 things they didn't mention at intake (more room on price under a condition, a requirement they won't sign without, or background) that come out when you ask about the topic. The debrief shows what you found and what you missed, and compliance checks your duty to your client. After acceptance, they also sign waivers, notices of fulfilment, mutual releases and amendments, you present the other side's requests to them, and they can surprise you (cold feet before going firm, a partner who isn't on board, second thoughts after firm, a seller wanting a later date), depending on the hidden client volatility.
 - **Mentor**: ask a 30-year broker for advice at any point. It sees only what you see (never the other side), and coaches on Ontario practice and the RECO Code of Ethics. Without an API key it gives rule-based coaching from the deal state.
 - **Debrief**: when a deal ends, both clients' briefs, the hidden facts (findings, appraisal, mortgage and title problems, competing buyers), the difficulty settings, and the opposing agent's reasoning for every move are revealed. You get scores for outcome (where you landed in the deal space), process, and **RECO compliance**: confidential information disclosed, phantom offers or misstated offer counts, offer contents shared without the seller's direction, legal advice, and attempts to go outside your client's instructions, each with the quote that triggered it. A veteran's critique closes it out (written by Claude with an API key).
+- **Players and the guide**: each person enters their name once and sees only their own deals and progress. A How it works page explains the flow, and a checklist on your first three deals ticks off each step as you go.
 - **Progress**: a page with your finished deals, average and recent scores, a score trend, compliance flags by rule, and every deal in a table (filter by role, open any deal, delete one, or clear all practice deals).
 
 ## Setup
@@ -56,12 +57,12 @@ The same API runs in two places (`server/api/routes.ts`):
 | Storage | SQLite in `data/` | Netlify Blobs: one record per deal, plus jobs and locks (`server/api/netlify.ts`) |
 | Changes to a deal | Run inline | Queued as a job. The page starts the background function (up to 15 minutes, so long Claude calls fit) and polls `/api/jobs/:id` |
 
-Production uses the Blobs store `negotiator`, and previews and branch deploys use `negotiator-preview`, so a preview never touches real deals.
+Each player's deals are kept under `players/<name>/deals/`. Production uses the Blobs store `negotiator`, and previews and branch deploys use `negotiator-preview`, so a preview never touches real deals.
 
 ### Setup
 
 1. In Netlify, add a new project and import this GitHub repo (branch `main`). `netlify.toml` sets the build.
-2. Under Project configuration → Environment variables, add `ANTHROPIC_API_KEY` with its scope including **Functions**. Optionally add `SCENARIO_MODEL` and `BOT_MODEL`.
-3. Under Project configuration → General → Visitor access → Project visibility, make sure it's **Private**. Otherwise anyone with the URL can spend your Claude credits.
+2. Optional: for Claude-written stories, agent and clients, add `ANTHROPIC_API_KEY` under Project configuration → Environment variables, with its scope including **Functions**. Without it, everything runs offline.
+3. Under Project configuration → General → Visitor access → Project visibility, choose **Password** to share it with a group (one password for everyone), or **Private** for just your Netlify team. Without an API key the app runs offline and costs no Claude credits.
 
 Every push to `main` then redeploys.

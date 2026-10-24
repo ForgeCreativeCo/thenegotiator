@@ -24,8 +24,8 @@ export class MemoryLocks implements Locks {
   }
 }
 
-export function localRuntime(store: Store): Runtime {
-  const locks = new MemoryLocks();
+/** Locks are shared across requests (pass the same MemoryLocks); the store is one player's. */
+export function localRuntime(store: Store, locks = new MemoryLocks()): Runtime {
   return {
     store,
     locks,

@@ -433,3 +433,32 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .verdict-pill-reluctant { background: var(--warn-bg); color: var(--warn-text); font-weight: 600; }
 .verdict-pill-refused { background: var(--error-bg); color: var(--error-text); font-weight: 600; }
 .small-button { margin-top: 0.45rem; font-size: 0.82rem; padding: 0.25rem 0.6rem; }
+
+/* Players, the first-deals checklist, and the guide */
+.link-button { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+.player-name { color: var(--muted); white-space: nowrap; }
+.name-screen { min-height: 100vh; display: grid; place-items: center; padding: 1rem; background: var(--bg); }
+.name-card { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; display: flex; flex-direction: column; gap: 0.9rem; }
+.name-card h1 { margin: 0.25rem 0 0; font-size: 1.4rem; }
+.name-card p { margin: 0; }
+.name-card input { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.55rem 0.7rem; }
+.checklist { border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; background: var(--surface); }
+.checklist summary { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; cursor: pointer; list-style: none; }
+.checklist summary::-webkit-details-marker { display: none; }
+.checklist summary .eyebrow { margin: 0; }
+.checklist ol { list-style: none; margin: 0.6rem 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.88rem; }
+.checklist li { display: flex; gap: 0.55rem; align-items: flex-start; color: var(--muted); }
+.checklist li.next { color: var(--text); font-weight: 500; }
+.checklist li.done { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); }
+.checklist .check { flex: none; width: 1.35rem; height: 1.35rem; border-radius: 50%; display: grid; place-items: center; font-size: 0.72rem; background: var(--surface-2); color: var(--muted); }
+.checklist li.next .check { background: var(--accent); color: var(--accent-contrast); }
+.checklist li.done .check { background: var(--accent-soft); color: var(--accent); }
+.guide-page { max-width: 760px; width: 100%; margin: 0 auto; }
+.guide { display: flex; flex-direction: column; gap: 1.4rem; line-height: 1.6; padding-bottom: 2rem; }
+.guide h1 { margin: 0.2rem 0 0.5rem; font-size: 1.6rem; }
+.guide h2 { margin: 0 0 0.4rem; font-size: 1.1rem; }
+.guide p { margin: 0 0 0.4rem; }
+.guide ul, .guide ol { margin: 0.2rem 0; padding-left: 1.25rem; }
+.guide li + li { margin-top: 0.3rem; }
+.guide > button { align-self: flex-start; }
+

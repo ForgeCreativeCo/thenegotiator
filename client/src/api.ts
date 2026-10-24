@@ -19,12 +19,41 @@ export class ApiError extends Error {
   }
 }
 
+// ---------- Who's playing ----------
+
+const PLAYER_STORAGE = "negotiator.player";
+let player: string | null = null;
+try {
+  player = localStorage.getItem(PLAYER_STORAGE);
+} catch {
+  // Storage blocked: the name lasts until the page reloads.
+}
+
+export function getPlayer(): string | null {
+  return player;
+}
+
+export function setPlayer(name: string | null): void {
+  player = name?.trim() || null;
+  try {
+    if (player) localStorage.setItem(PLAYER_STORAGE, player);
+    else localStorage.removeItem(PLAYER_STORAGE);
+  } catch {
+    // Storage blocked: keep it in memory.
+  }
+}
+
+/** Every request says whose deals it's about. The server keeps each name's deals apart. */
+function withPlayer(init: RequestInit = {}): RequestInit {
+  return { ...init, headers: { ...(init.headers as Record<string, string> | undefined), ...(player ? { "x-player": encodeURIComponent(player) } : {}) } };
+}
+
 async function parse(response: Response): Promise<{ error?: string; details?: string[]; jobId?: string } & Record<string, unknown>> {
   return response.json().catch(() => ({ error: `The API server isn't responding (${response.status}). Is it running?` }));
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  const response = await fetch(path, withPlayer(init));
   const body = await parse(response);
   if (!response.ok) throw new ApiError(body.error ?? `Request failed (${response.status})`, body.details ?? []);
   return body as T;
@@ -49,7 +78,7 @@ async function follow<T>(jobId: string): Promise<T> {
 
 /** Anything that changes a deal. Locally it answers directly; on Netlify it answers 202 with a job to follow. */
 async function work<T>(job: WorkRequest): Promise<T> {
-  const response = await fetch("/api/work", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(job) });
+  const response = await fetch("/api/work", withPlayer({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(job) }));
   const body = await parse(response);
   if (response.status === 202 && typeof body.jobId === "string") return follow<T>(body.jobId);
   if (!response.ok) throw new ApiError(body.error ?? `Request failed (${response.status})`, body.details ?? []);

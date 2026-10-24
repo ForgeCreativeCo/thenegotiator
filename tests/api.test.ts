@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { SqliteStore } from "../server/db";
 import { localRuntime } from "../server/api/local";
-import { matchRoute, type Reply, type Runtime } from "../server/api/routes";
+import { matchRoute, playerKey, type Reply, type Runtime } from "../server/api/routes";
 import { MemoryKV } from "../server/api/kv";
 import { netlifyRuntime, RUN_LIMIT_MS, START_LIMIT_MS, storeName } from "../server/api/netlify";
 
@@ -50,6 +50,29 @@ describe("routes", () => {
     expect(body(list)[0].id).toBe(id);
   });
 
+  it("keeps each player's deals apart locally, and the first player takes deals from before players", async () => {
+    const db = new SqliteStore(":memory:");
+    const legacy = body(await call(localRuntime(db), "POST", "/api/work", { kind: "create" })).view.id;
+    const pat = localRuntime(db.forPlayer("pat"));
+    const sam = localRuntime(db.forPlayer("sam"));
+    expect(body(await call(pat, "GET", "/api/scenarios")).map((s: { id: string }) => s.id)).toEqual([legacy]);
+    const samsDeal = body(await call(sam, "POST", "/api/work", { kind: "create" })).view.id;
+    expect(body(await call(sam, "GET", "/api/scenarios")).map((s: { id: string }) => s.id)).toEqual([samsDeal]);
+    expect((await call(sam, "GET", `/api/scenarios/${legacy}`)).status).toBe(404);
+    expect(body(await call(sam, "DELETE", "/api/scenarios")).deleted).toBe(1);
+    expect(body(await call(pat, "GET", "/api/scenarios"))).toHaveLength(1);
+  });
+
+  it("turns names into stable player keys", () => {
+    expect(playerKey("  Pat Morgan ")).toBe("pat-morgan");
+    expect(playerKey("PAT  morgan!")).toBe("pat-morgan");
+    expect(playerKey(encodeURIComponent("José Núñez"))).toBe("jose-nunez");
+    expect(playerKey(encodeURIComponent("李明"))).toMatch(/^u-/);
+    expect(playerKey(encodeURIComponent("李明"))).toBe(playerKey(encodeURIComponent(" 李明 ")));
+    expect(playerKey("   ")).toBeNull();
+    expect(playerKey(undefined)).toBeNull();
+  });
+
   it("refuses bad work before running it", async () => {
     const rt = localRuntime(new SqliteStore(":memory:"));
     expect((await call(rt, "POST", "/api/work", { kind: "nope" })).status).toBe(400);
@@ -66,7 +89,7 @@ describe("Netlify runtime", () => {
   function setup() {
     let clock = 1_000_000;
     const kv = new MemoryKV();
-    const rt = netlifyRuntime(kv, () => clock);
+    const rt = netlifyRuntime(kv, "pat", () => clock);
     return { kv, rt, tick: (ms: number) => (clock += ms) };
   }
 

@@ -9,17 +9,20 @@ import { TransactionPanel } from "./TransactionPanel";
 import { OfferNightPanel } from "./OfferNightPanel";
 import { ClientPanel } from "./ClientPanel";
 import { ClientReviewCard } from "./ClientReviewCard";
+import { FirstDealChecklist } from "./FirstDealChecklist";
 import { mySide, openOfferFrom, simClock, startingTerms } from "./negotiationUtils";
 
 interface Props {
   view: UserView;
   negotiation: NegotiationView | null;
   onChange: (n: NegotiationView) => void;
+  /** On your first few deals: the flow of a deal, ticked off as you go. */
+  showChecklist?: boolean;
 }
 
 type Pending = "message" | "offer" | "accept" | "walk" | "start" | "review" | "present" | null;
 
-export function Negotiation({ view, negotiation, onChange }: Props) {
+export function Negotiation({ view, negotiation, onChange, showChecklist = false }: Props) {
   const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<{ message: string; details: string[] } | null>(null);
@@ -103,7 +106,9 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
   if (tab === "client" && negotiation && client) {
     return (
       <div className="negotiation-panel">
-        {tabs}
+        {showChecklist && <FirstDealChecklist view={view} negotiation={negotiation} />}
+        {showChecklist && <FirstDealChecklist view={view} negotiation={negotiation} />}
+      {tabs}
         <ClientPanel view={view} negotiation={negotiation} onChange={onChange} />
       </div>
     );
@@ -111,6 +116,7 @@ export function Negotiation({ view, negotiation, onChange }: Props) {
 
   return (
     <div className="negotiation-panel">
+      {showChecklist && <FirstDealChecklist view={view} negotiation={negotiation} />}
       {tabs}
       <div className="transcript" aria-live="polite">
         <div className="situation">

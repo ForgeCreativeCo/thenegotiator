@@ -60,6 +60,31 @@ export interface Runtime {
   submit(work: WorkRequest): Promise<Reply>;
 }
 
+/** Each person's deals are kept apart by the name they enter, sent with every request. */
+export const PLAYER_HEADER = "x-player";
+
+/** A stable key for a player's name (sent URI-encoded): lowercase letters, digits and dashes, accents dropped.
+ * Names with no Latin letters at all get a key from their characters' code points. Null if the name is blank. */
+export function playerKey(raw: string | null | undefined): string | null {
+  let name = raw ?? "";
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    // Not encoded; use as is.
+  }
+  name = name.trim().toLowerCase();
+  if (!name) return null;
+  const key = name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return key || `u-${Array.from(name.replace(/\s+/g, ""), (c) => c.codePointAt(0)!.toString(36)).join("-")}`.slice(0, 40);
+}
+
+export const NEEDS_NAME: Reply = { status: 400, body: { error: "Tell us your name first." } };
+
 const ok = (body: unknown): Reply => ({ status: 200, body });
 const fail = (status: number, error: string, details?: string[]): Reply => ({ status, body: details ? { error, details } : { error } });
 
@@ -173,11 +198,13 @@ export interface Route {
   method: "GET" | "POST" | "DELETE";
   /** Express-style, e.g. /api/scenarios/:id */
   path: string;
+  /** Answers without a player name. */
+  public?: boolean;
   handle(rt: Runtime, params: Record<string, string>, body: unknown): Promise<Reply>;
 }
 
 export const ROUTES: Route[] = [
-  { method: "GET", path: "/api/status", handle: async () => ok({ storyWriter: hasClaudeCredentials() ? "claude" : "offline" }) },
+  { method: "GET", path: "/api/status", public: true, handle: async () => ok({ storyWriter: hasClaudeCredentials() ? "claude" : "offline" }) },
 
   { method: "GET", path: "/api/scenarios", handle: async (rt) => ok(await rt.store.list()) },
 
@@ -237,7 +264,11 @@ export const ROUTES: Route[] = [
   {
     method: "DELETE",
     path: "/api/scenarios",
-    handle: async (rt) => ((await rt.locks.anyLocked()) ? fail(409, "A deal is busy. Try again in a moment.") : ok({ deleted: await rt.store.deleteAll() })),
+    handle: async (rt) => {
+      // Only this player's deals: someone else's running turn doesn't block them.
+      for (const d of await rt.store.all()) if (await rt.locks.isLocked(d.scenario.id)) return fail(409, "A deal is busy. Try again in a moment.");
+      return ok({ deleted: await rt.store.deleteAll() });
+    },
   },
 ];
 

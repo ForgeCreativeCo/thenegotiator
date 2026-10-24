@@ -3,16 +3,20 @@
 import express from "express";
 import { SqliteStore } from "./db";
 import { hasClaudeCredentials } from "./scenarioService";
-import { ROUTES } from "./api/routes";
-import { localRuntime } from "./api/local";
+import { NEEDS_NAME, PLAYER_HEADER, ROUTES, playerKey } from "./api/routes";
+import { MemoryLocks, localRuntime } from "./api/local";
 
 const app = express();
-const runtime = localRuntime(new SqliteStore());
+const db = new SqliteStore();
+const locks = new MemoryLocks();
 app.use(express.json());
 
 for (const route of ROUTES) {
   const method = route.method === "GET" ? "get" : route.method === "POST" ? "post" : "delete";
   app[method](route.path, async (req, res) => {
+    const player = playerKey(req.get(PLAYER_HEADER));
+    if (!player && !route.public) return void res.status(NEEDS_NAME.status).json(NEEDS_NAME.body);
+    const runtime = localRuntime(player ? db.forPlayer(player) : db, locks);
     const reply = await route.handle(runtime, req.params as Record<string, string>, req.body);
     res.status(reply.status).json(reply.body);
   });

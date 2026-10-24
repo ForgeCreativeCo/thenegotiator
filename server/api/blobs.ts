@@ -5,6 +5,7 @@ import type { Context } from "@netlify/functions";
 import { blobKV } from "./kv";
 import { netlifyRuntime, storeName, type NetlifyRuntime } from "./netlify";
 
-export function runtimeFor(context: Context): NetlifyRuntime {
-  return netlifyRuntime(blobKV(getStore({ name: storeName(context.deploy?.context), consistency: "strong" })));
+/** The runtime for one player (empty for requests that don't need one, like polling a job or running it). */
+export function runtimeFor(context: Context, player = ""): NetlifyRuntime {
+  return netlifyRuntime(blobKV(getStore({ name: storeName(context.deploy?.context), consistency: "strong" })), player);
 }

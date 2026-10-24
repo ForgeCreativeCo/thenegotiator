@@ -16,7 +16,7 @@ A practice tool for negotiating **Ontario** residential real estate deals with a
 | Offer nights | **Included**: held offers, registered offers, bully offers, sign-backs, and improvement rounds. |
 | Coaching | A mentor during the deal, **plus** a debrief at the end that also grades **RECO compliance**. |
 | Difficulty | Random mix, **not shown** until the debrief. |
-| Users | Single user, running locally or privately on Netlify. |
+| Users | A small group sharing one site behind a password. Each person enters their name and sees only their own deals and progress (honour system, no accounts). Offline only: no API key. |
 | Your own client | A **conversation with your client**: they review and sign every document before it goes out, you present the other side's offers to them, and they know things you have to ask about. Their decisions are made in code; Claude writes their words. |
 
 ---
