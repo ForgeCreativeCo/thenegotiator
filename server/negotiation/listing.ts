@@ -225,7 +225,9 @@ export function applyListingAction(s: Scenario, n: Negotiation, action: UserActi
   if (!listing) throw new ActionError("That isn't available on this deal.");
   if (userSide(s) !== "seller") throw new ActionError("Only the listing side handles competing offers.");
   const relisting = canRelist(s, n);
-  if (listing.mode === "held" && !relisting && action.type !== "set_disclosure") throw new ActionError("Offers are being held for the review. Use the offer night controls.");
+  if (listing.mode === "held" && !relisting && action.type !== "set_disclosure") {
+    throw new ActionError(n.offerNight && n.offerNight.phase !== "done" ? "Offers are being held for the review. Use the offer night controls." : "The offer night is over: the other buyers have been released.");
+  }
   const text = (action.text ?? "").trim();
 
   switch (action.type) {

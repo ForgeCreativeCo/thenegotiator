@@ -217,6 +217,51 @@ describe("competing offers on the listing side", () => {
   });
 });
 
+describe("after an offer night", () => {
+  it("the buyer's agent answers the sellers' sign-back once the listing has held offers", async () => {
+    const s = listingWithCompetitors();
+    const n = withClient(s);
+    await startNegotiation(s, n, offlinePlayer);
+    await act(s, n, { type: "client_hold", hold: true });
+    await act(s, n, { type: "review" });
+    const theirs = [...n.offers].reverse().find((o) => o.by === "buyer" && (o.status === "registered" || o.status === "open"))!;
+    const price = Math.max(theirs.terms.price + 10_000, s.seller.reservationPrice);
+    const terms = { ...theirs.terms, price, deposit: Math.ceil((price * s.seller.minDepositPct) / 100 / 1000) * 1000 + 1_000, completionDate: s.seller.idealClose };
+    const before = n.messages.length;
+    await signAndSend(s, n, { type: "offer", terms });
+    expect(n.messages.slice(before).some((m) => m.speaker === "bot")).toBe(true);
+  });
+
+  it("the listing agent keeps negotiating with a buyer whose offer was signed back on offer night", async () => {
+    let checked = 0;
+    for (let from = 1; from < 30_000 && checked < 2; from += 211) {
+      const s = scenario("buyer_agent", (x) => Boolean(x.offerNight), from);
+      const n = withClient(s);
+      await startNegotiation(s, n, offlinePlayer);
+      const limit = s.buyer.reservationPrice;
+      const { defaultBuyerTerms } = await import("../server/negotiation/terms");
+      const { setNet } = await import("../server/negotiation/constraints");
+      const offer = { ...setNet("buyer", s, defaultBuyerTerms(s, { depositTiming: "herewith" }), Math.round(Math.min(limit, s.seller.reservationPrice * 0.97))), completionDate: s.buyer.idealClose };
+      const sCleared = { ...s, clientFacts: clientFacts(s).filter((f) => f.effect.kind !== "require") };
+      await act(sCleared, n, { type: "client_review", pending: { type: "offer", terms: offer } });
+      if (n.client!.messages.at(-1)!.verdict === "refused") continue;
+      await act(sCleared, n, { type: "offer", terms: offer });
+      for (let i = 0; i < 3 && n.offerNight!.phase !== "done"; i++) await act(sCleared, n, { type: "review" });
+      if (n.offerNight!.outcome?.kind !== "continued_with_sign_back" || n.status !== "negotiating") continue;
+      // The sellers' sign-back came from their agent, and the next offer gets an answer too.
+      expect(n.offers.some((o) => o.by === "seller")).toBe(true);
+      const counter = { ...offer, price: offer.price + 2_000 };
+      await act(sCleared, n, { type: "client_review", pending: { type: "offer", terms: counter } });
+      if (n.client!.messages.at(-1)!.verdict === "refused") continue;
+      const before = n.messages.length;
+      await act(sCleared, n, { type: "offer", terms: counter });
+      expect(n.messages.slice(before).some((m) => m.speaker === "bot")).toBe(true);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+});
+
 describe("competing offers on the buyer side", () => {
   it("the listing side holds offers or sells to the other buyer when competition arrives", async () => {
     let held = 0;

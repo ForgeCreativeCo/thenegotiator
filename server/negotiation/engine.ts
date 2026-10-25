@@ -198,8 +198,11 @@ async function runBotTurn(s: Scenario, n: Negotiation, input: Pick<TurnContext, 
 
   // Competing buyers on a deal that tracks them: offers arrive, and the listing side may hold offers or sell to another buyer.
   if (n.listing) {
+    // Only this turn's events end it: a sale to another buyer, or the listing switching to hold offers just now.
+    // A listing that held offers earlier (an offer night that's over) negotiates normally.
+    const heldBefore = n.listing.mode === "held";
     listingTick(s, n);
-    if (n.status !== "negotiating" || n.listing.mode === "held") return;
+    if (n.status !== "negotiating" || (!heldBefore && n.listing.mode === "held")) return;
   }
 
   // Competing offers that have arrived by now. The listing side hears about them; the buyer's side doesn't.

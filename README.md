@@ -38,6 +38,7 @@ Without an API key, scenarios still work, but their stories come from a plainer 
 | `npm test` | Runs the tests: scenario consistency and information leaks across 2,000 seeds, plus simulated negotiations and full contract-to-closing runs checking the agent never breaks its client's limits |
 | `npm run typecheck` | Type-checks everything |
 | `npm run generate -- --seed 123 [--offline]` | Prints one full scenario **including hidden layers**, for inspecting the generator |
+| `npx tsx server/scripts/fuzzDeals.ts` | Plays hundreds of randomized deals on both sides and checks that nothing crashes, the other agent always answers, and there are never two accepted agreements |
 | `npx tsx server/scripts/simStats.ts` | Plays simulated users against the offline agent and prints close rates and outcomes, for tuning difficulty |
 
 ## How a scenario is built
