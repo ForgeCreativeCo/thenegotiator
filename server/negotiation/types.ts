@@ -6,11 +6,12 @@ import type { TransactionClientView } from "../transaction/engine";
 import type { OfferNightState } from "./offerNight";
 import type { Critique } from "../coach/debrief";
 import type { ClientState, ClientView } from "../client/types";
+import type { ListingState, ListingView } from "./listing";
 
 /** lost = the buyer's offer lost on offer night; sold_to_other = the listing side accepted a competing buyer. */
 export type NegotiationStatus = "negotiating" | "under_contract" | "dead" | "lost" | "sold_to_other";
 export type BotAction = "counter" | "accept" | "reject" | "hold" | "walk";
-export type UserActionType = "message" | "offer" | "accept" | "walk" | "review" | "improve" | "decline" | "accept_competitor" | "signback_competitor" | "set_disclosure" | "client_message" | "client_review" | "client_present" | "client_direction";
+export type UserActionType = "message" | "offer" | "accept" | "walk" | "review" | "improve" | "decline" | "accept_competitor" | "signback_competitor" | "set_disclosure" | "client_message" | "client_review" | "client_present" | "client_direction" | "client_hold" | "decline_competitor" | "wait" | "tell_count" | "invite_back";
 
 export interface Offer {
   id: string;
@@ -69,6 +70,8 @@ export interface Negotiation {
   client?: ClientState;
   /** Offline dialogue lines the opposing agent has used in this deal, so it doesn't repeat itself. */
   usedLines?: string[];
+  /** Competing buyers and how offers are handled. Absent on deals saved before multiple offers existed. */
+  listing?: ListingState;
 }
 
 export interface RefusedAttempt {
@@ -96,6 +99,8 @@ export interface NegotiationView {
   transaction: TransactionClientView | null;
   offerNight: OfferNightView | null;
   client: ClientView | null;
+  /** The listing side's competing offers (null on the buyer side and for older deals). */
+  listing: ListingView | null;
 }
 
 export interface OfferNightView {
@@ -113,8 +118,8 @@ export interface OfferNightView {
   outcome: OfferNightState["outcome"];
 }
 
-export function negotiationView(n: Negotiation, transaction: TransactionClientView | null = null, offerNight: OfferNightView | null = null, client: ClientView | null = null): NegotiationView {
-  return { status: n.status, simHours: n.simHours, messages: n.messages, offers: n.offers, acceptedOfferId: n.acceptedOfferId, endedBy: n.endedBy, transaction, offerNight, client };
+export function negotiationView(n: Negotiation, transaction: TransactionClientView | null = null, offerNight: OfferNightView | null = null, client: ClientView | null = null, listing: ListingView | null = null): NegotiationView {
+  return { status: n.status, simHours: n.simHours, messages: n.messages, offers: n.offers, acceptedOfferId: n.acceptedOfferId, endedBy: n.endedBy, transaction, offerNight, client, listing };
 }
 
 export function newNegotiation(scenarioId: string): Negotiation {

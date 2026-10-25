@@ -17,6 +17,12 @@ import { hasClaudeCredentials } from "../scenarioService";
 import { createTransaction } from "../transaction/schedule";
 import { applyClientAction, clientViolations, isClientAction, requireSignature } from "../client/engine";
 import { agentSideAnswers, offerNightLines, type AgentContext } from "../dialogue/agent";
+import { applyListingAction, canRelist, isListingAction, listingTick, liveCompetitors, newListing, noteCountRule, releaseOthers, type ListingState } from "./listing";
+
+/** No offer or acceptance can go out to the buyer while a sign-back is out to a competing buyer. */
+function noSignBackOut(n: Negotiation): void {
+  if (n.listing?.signBackOut) throw new ActionError("You have a sign-back out to another buyer. Wait for their answer first: two sign-backs out could both be accepted.");
+}
 
 /** The offline agent's dialogue context for engine-written lines, with this deal's used lines. */
 function agentCtx(s: Scenario, n: Negotiation): AgentContext {
@@ -35,6 +41,8 @@ export interface UserAction {
   preemptive?: boolean;
   competitorId?: string;
   disclosure?: "count_only" | "details";
+  /** client_hold: the sellers hold offers until a review time (true) or take them any time (false). */
+  hold?: boolean;
   /** client_review: the signing action to put in front of the client. */
   pending?: UserAction;
   /** client_present: the other side's offer (omit for all offers at the listing side's offer-night review). */
@@ -96,22 +104,34 @@ function sideLabel(side: Side): string {
 /** The opening move. If the bot represents the buyer, it makes the first offer. */
 export async function startNegotiation(s: Scenario, n: Negotiation, player: BotPlayer = defaultBotPlayer): Promise<void> {
   if (n.messages.length > 0) return;
-  if (s.offerNight && !n.offerNight) n.offerNight = initOfferNight(s);
+  // New deals track competing buyers. On the listing side, the sellers decide whether to hold offers; otherwise the scenario does.
+  const multipleOffers = Boolean(n.client?.reviewRequired);
+  if (multipleOffers && !n.listing) n.listing = newListing(s);
+  if (s.offerNight && !n.offerNight && !(multipleOffers && userSide(s) === "seller")) {
+    n.offerNight = initOfferNight(s);
+    if (n.listing) Object.assign(n.listing, { mode: "held", competitors: [] } satisfies Partial<ListingState>);
+  }
   pushMessage(n, {
     speaker: "system",
     text: s.userRole === "buyer_agent" ? `You're representing the buyer. ${n.offerNight ? "" : `Write your offer to ${s.narrative.opposingAgent.name} when you're ready.`}`.trim() : `You're representing the seller.${n.offerNight ? "" : ` ${s.narrative.opposingAgent.name} is sending over an offer.`}`,
   });
+  if (multipleOffers && userSide(s) === "seller") {
+    pushMessage(n, { speaker: "system", text: "Agree with your sellers how offers will be handled: any time, or held until a review time. Other buyers may send offers too." });
+  }
   if (n.offerNight) return startOfferNight(s, n, n.offerNight);
   if (botSide(s) === "buyer") await runBotTurn(s, n, { userText: "", userTerms: null }, player);
 }
 
 export async function applyUserAction(s: Scenario, n: Negotiation, action: UserAction, player: BotPlayer = defaultBotPlayer): Promise<void> {
-  if (n.status !== "negotiating") throw new ActionError("This negotiation is over.");
+  // After a collapse, the listing side can still talk to its sellers and deal with other buyers.
+  const relisting = canRelist(s, n) && (isListingAction(action.type) || isClientAction(action.type));
+  if (n.status !== "negotiating" && !relisting) throw new ActionError("This negotiation is over.");
   const mine = userSide(s);
   const theirs = botSide(s);
   const text = (action.text ?? "").trim();
   if (isClientAction(action.type)) return applyClientAction(s, n, action);
-  if (n.offerNight && n.offerNight.phase !== "done") return offerNightAction(s, n, n.offerNight, action, player);
+  if (n.offerNight && n.offerNight.phase !== "done" && !relisting) return offerNightAction(s, n, n.offerNight, action, player);
+  if (n.listing && isListingAction(action.type)) return applyListingAction(s, n, action);
 
   switch (action.type) {
     case "message": {
@@ -124,9 +144,11 @@ export async function applyUserAction(s: Scenario, n: Negotiation, action: UserA
       const parsed = TermsSchema.safeParse(action.terms);
       if (!parsed.success) throw new ActionError("Those terms are incomplete.", parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
       const terms = normalizeTerms(parsed.data);
+      noSignBackOut(n);
       const problems = clientViolations(s, n, terms);
       if (problems.length) throw new ActionError(`Your ${sideLabel(mine)} won't sign this.`, problems);
       requireSignature(s, n, action);
+      noteCountRule(s, n);
       const theirOffer = lastOpenOffer(n, theirs);
       if (theirOffer) theirOffer.status = "countered";
       const offer: Offer = { id: randomUUID(), by: mine, terms, status: "open", at: n.simHours };
@@ -138,14 +160,17 @@ export async function applyUserAction(s: Scenario, n: Negotiation, action: UserA
     case "accept": {
       const theirOffer = lastOpenOffer(n, theirs);
       if (!theirOffer) throw new ActionError("There's no offer from the other side to accept.");
+      noSignBackOut(n);
       const problems = clientViolations(s, n, theirOffer.terms);
       if (problems.length) throw new ActionError(`Your ${sideLabel(mine)} won't sign this.`, problems);
       requireSignature(s, n, action);
+      noteCountRule(s, n);
       theirOffer.status = "accepted";
       n.acceptedOfferId = theirOffer.id;
       n.status = "under_contract";
       n.transaction = createTransaction(s, acceptedTerms(n), n.simHours);
       n.endedBy = "user";
+      releaseOthers(s, n, theirOffer.terms.conditions.length === 0);
       pushMessage(n, { speaker: "user", text: text || "We accept.", action: "accept", offerId: theirOffer.id });
       pushMessage(n, { speaker: "system", text: `Agreement of Purchase and Sale accepted at ${money(theirOffer.terms.price)}, ${theirOffer.terms.conditions.length ? "conditional" : "firm"}.`, event: "deal" });
       return;
@@ -171,12 +196,18 @@ async function runBotTurn(s: Scenario, n: Negotiation, input: Pick<TurnContext, 
   const hasOffer = Boolean(input.userTerms) || round === 1;
   n.simHours += hasOffer ? rng.int(1, s.difficulty.temperament === "cagey" ? 20 : 8) : rng.int(0, 2) + 0.5;
 
+  // Competing buyers on a deal that tracks them: offers arrive, and the listing side may hold offers or sell to another buyer.
+  if (n.listing) {
+    listingTick(s, n);
+    if (n.status !== "negotiating" || n.listing.mode === "held") return;
+  }
+
   // Competing offers that have arrived by now. The listing side hears about them; the buyer's side doesn't.
   const newEvents: string[] = [];
   s.groundTruth.competingOffers.forEach((offer, i) => {
     const id = `competing-${i}`;
-    // Offer-night scenarios handle competing buyers through registration instead.
-    if (n.offerNight || offer.phase !== "pre_contract" || n.announcedEvents.includes(id) || offer.arrivesDay * 12 > n.simHours) return;
+    // Offer-night scenarios handle competing buyers through registration instead; tracked listings, through the listing.
+    if (n.offerNight || n.listing || offer.phase !== "pre_contract" || n.announcedEvents.includes(id) || offer.arrivesDay * 12 > n.simHours) return;
     n.announcedEvents.push(id);
     const summary = `Another buyer's agent submitted a ${offer.strength} offer at ${money(offer.price)}.`;
     if (side === "seller") newEvents.push(`${summary} This is real; you may mention it truthfully.`);
@@ -191,7 +222,7 @@ async function runBotTurn(s: Scenario, n: Negotiation, input: Pick<TurnContext, 
   }
 
   const rec = recommend(s, n);
-  const competingOffers = side === "seller" ? n.announcedEvents.filter((e) => e.startsWith("competing-")).length : null;
+  const competingOffers = side === "seller" ? (n.listing ? liveCompetitors(n).length : n.announcedEvents.filter((e) => e.startsWith("competing-")).length) : null;
   const ctx: TurnContext = { ...input, simTime: simTime(s, n.simHours), newEvents, clientUpdate, competingOffers, usedLines: (n.usedLines ??= []) };
   const turn = await player(s, rec, ctx, n.llmHistory, round);
   const userOffer = lastOpenOffer(n, userSide(s));
@@ -215,6 +246,7 @@ async function runBotTurn(s: Scenario, n: Negotiation, input: Pick<TurnContext, 
       n.transaction = createTransaction(s, acceptedTerms(n), n.simHours);
       n.endedBy = "bot";
       pushMessage(n, { speaker: "system", text: `Agreement of Purchase and Sale accepted at ${money(userOffer.terms.price)}, ${userOffer.terms.conditions.length ? "conditional" : "firm"}.`, event: "deal" });
+      releaseOthers(s, n, userOffer.terms.conditions.length === 0);
       break;
     }
     case "reject":
@@ -251,6 +283,7 @@ function enterContract(s: Scenario, n: Negotiation, offer: Offer, endedBy: "user
   n.transaction = createTransaction(s, offer.terms, n.simHours);
   n.endedBy = endedBy;
   pushMessage(n, { speaker: "system", text: `Agreement of Purchase and Sale accepted at ${money(offer.terms.price)}, ${offer.terms.conditions.length ? "conditional" : "firm"}.`, event: "deal" });
+  releaseOthers(s, n, offer.terms.conditions.length === 0);
 }
 
 function releaseCompetitors(state: OfferNightState, exceptId?: string): void {

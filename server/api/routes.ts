@@ -16,6 +16,7 @@ import { buildDebrief, debriefAvailable } from "../coach/debrief";
 import { buildProgress } from "../coach/progress";
 import type { ScenarioSummary } from "./summary";
 import { clientView } from "../client/engine";
+import { listingView } from "../negotiation/listing";
 import { newClientState } from "../client/types";
 
 export interface Deal {
@@ -95,7 +96,7 @@ function viewFor(s: Scenario, n: Negotiation) {
     if (accepted) n.transaction = createTransaction(s, accepted.terms, n.simHours);
   }
   if (n.transaction) contractSignedNote(s, n);
-  return negotiationView(n, n.transaction ? transactionClientView(s, n.transaction) : null, offerNightView(s, n), clientView(s, n));
+  return negotiationView(n, n.transaction ? transactionClientView(s, n.transaction) : null, offerNightView(s, n), clientView(s, n), listingView(s, n));
 }
 
 export function lockKey(work: WorkRequest): string | null {

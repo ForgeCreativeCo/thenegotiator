@@ -225,6 +225,12 @@ export function clientDirectionDraft(c: ClientCtx, direction: "count_only" | "de
     : line(c, "direction-count", { anxious: ["Just tell them how many offers there are. {We} don't want anyone's details going around. That's {our} direction, in writing.", "Only the number, please. {Weve} signed it."], analytical: ["Number of offers only. That's {our} written direction.", "Count only. Signed."], emotional: ["Just the number. Everyone's offer deserves privacy. It's in writing.", "Only how many. {Weve} signed the direction."], blunt: ["Count only. In writing.", "Just the number."] });
 }
 
+export function clientHoldDraft(c: ClientCtx, hold: boolean): string {
+  return hold
+    ? line(c, "hold-yes", { anxious: ["If you think holding offers gets {us} the best result, okay. {Well} sign the decision.", "A review night? It makes {us} nervous, but {we} trust you. Signed."], analytical: ["Agreed. Competition at a set time should maximize the price. Signed.", "Hold them. Let everyone compete at once. Decision signed."], emotional: ["Okay! It's exciting to think people will compete for {our} home. Signed.", "Let's do it. {Weve} signed."], blunt: ["Hold them. Signed.", "Fine. Review them all at once."] })
+    : line(c, "hold-no", { anxious: ["Taking offers as they come sounds less stressful. Signed.", "Okay, as they come in. {Well} sign that."], analytical: ["Any time is fine. {Well} evaluate each one on its merits. Signed.", "Agreed: offers as they arrive. Signed."], emotional: ["As they come in is fine with {us}. Signed.", "Okay, {well} see them as they come. Signed."], blunt: ["Any time. Signed.", "Fine. Bring them as they come."] });
+}
+
 // ---------- After acceptance ----------
 
 export const clientTxLines = {

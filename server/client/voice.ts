@@ -10,7 +10,7 @@ import { hasClaudeCredentials } from "../scenarioService";
 import type { Negotiation } from "../negotiation/types";
 import type { ClientFact, Topic } from "./types";
 import { requirementLabel } from "./facts";
-import { clientChatDraft, clientDirectionDraft, clientPresentDraft, clientReviewDraft, type ClientCtx } from "../dialogue/client";
+import { clientChatDraft, clientDirectionDraft, clientHoldDraft, clientPresentDraft, clientReviewDraft, type ClientCtx } from "../dialogue/client";
 
 const MODEL = process.env.BOT_MODEL || "claude-opus-5-5";
 
@@ -63,6 +63,10 @@ export interface PresentAssessment {
 
 export function presentDraft(s: Scenario, n: Negotiation, a: PresentAssessment): string {
   return clientPresentDraft(ctxOf(s, n), a, reminders(a.missing, (label) => `And it doesn't have the ${label}.`));
+}
+
+export function holdDraft(s: Scenario, n: Negotiation, hold: boolean): string {
+  return clientHoldDraft(ctxOf(s, n), hold);
 }
 
 export function directionDraft(s: Scenario, n: Negotiation, direction: "count_only" | "details"): string {

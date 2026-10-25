@@ -8,12 +8,13 @@ import { TermsSchema, normalizeTerms, type Terms } from "../negotiation/terms";
 import { netPrice, violations } from "../negotiation/constraints";
 import { registeredCompetitors } from "../negotiation/offerNight";
 import type { Negotiation, Offer } from "../negotiation/types";
-import { ActionError, userSide, type UserAction } from "../negotiation/engine";
+import { ActionError, pushMessage, simTime, userSide, type UserAction } from "../negotiation/engine";
 import { clientFacts, extraRoom, requirementProblems, withClientAuthority } from "./facts";
-import { chatDraft, clientVoice, directionDraft, presentDraft, reviewDraft, story, type PresentAssessment } from "./voice";
+import { allCompetitors, holdOffers, nextReviewTime, writtenOfferCount } from "../negotiation/listing";
+import { chatDraft, clientVoice, directionDraft, holdDraft, presentDraft, reviewDraft, story, type PresentAssessment } from "./voice";
 import { newClientState, type ClientFact, type ClientMessage, type ClientState, type ClientView, type Topic, type UncoveredHow } from "./types";
 
-export const CLIENT_ACTIONS = ["client_message", "client_review", "client_present", "client_direction"] as const;
+export const CLIENT_ACTIONS = ["client_message", "client_review", "client_present", "client_direction", "client_hold"] as const;
 
 export function isClientAction(type: string): boolean {
   return (CLIENT_ACTIONS as readonly string[]).includes(type);
@@ -90,7 +91,7 @@ export function documentFor(s: Scenario, n: Negotiation, action: UserAction): Do
     }
     case "accept_competitor":
     case "signback_competitor": {
-      const c = n.offerNight?.competitors.find((x) => x.id === action.competitorId && x.status === "registered");
+      const c = [...(n.offerNight?.competitors ?? []), ...allCompetitors(n)].find((x) => x.id === action.competitorId && x.status === "registered");
       if (!c) throw new ActionError("That offer isn't available.");
       const terms = action.type === "accept_competitor" ? c.terms : parseTerms(action.terms);
       return { label: action.type === "accept_competitor" ? `acceptance of ${c.label}` : `sign-back to ${c.label}`, terms, key: key({ competitorId: c.id, terms }) };
@@ -183,7 +184,7 @@ export async function applyClientAction(s: Scenario, n: Negotiation, action: Use
     }
 
     case "client_present": {
-      const assessment = presentOffers(s, n, action.offerId);
+      const assessment = presentOffers(s, n, action.offerId, action.competitorId);
       pushClient(n, { speaker: "user", text: text || (assessment.count && assessment.count > 1 ? `The registered offers are in. Let's go through all ${assessment.count}.` : `${s.narrative.opposingAgent.name}'s ${assessment.label} came in at ${money(assessment.price)}. Here it is.`), kind: "present", offerId: action.offerId });
       const draft = presentDraft(s, n, assessment);
       const { text: reply } = await clientVoice(s, n, `[Your agent presents the other side's ${assessment.label}] Price ${money(assessment.price)}.`, draft);
@@ -192,13 +193,34 @@ export async function applyClientAction(s: Scenario, n: Negotiation, action: Use
     }
 
     case "client_direction": {
-      if (userSide(s) !== "seller" || !n.offerNight) throw new ActionError("Written direction on disclosure is for the listing side on offer night.");
+      if (userSide(s) !== "seller" || (!n.offerNight && !n.listing)) throw new ActionError("Written direction on disclosure is for the listing side when there are competing offers.");
       if (c.direction) throw new ActionError(`Your sellers have already given you their direction.`);
       c.direction = s.offerNight?.sellerDisclosure ?? "count_only";
       pushClient(n, { speaker: "user", text: text || "Other buyers' agents may ask about the competing offers. How much do you want me to disclose? I'll need your direction in writing.", kind: "direction" });
       const { text: reply } = await clientVoice(s, n, "[Your agent asks for your written direction on disclosing competing offers]", directionDraft(s, n, c.direction));
       pushClient(n, { speaker: "client", text: reply, kind: "direction" });
       pushClient(n, { speaker: "system", text: `${names} signed a written direction: ${c.direction === "details" ? "disclose the contents of competing offers" : "disclose the number of offers only"}.`, kind: "direction" });
+      return;
+    }
+
+    case "client_hold": {
+      const listing = n.listing;
+      if (userSide(s) !== "seller" || !listing) throw new ActionError("How offers are handled is the sellers' decision, on the listing side.");
+      if (listing.mode === "held") throw new ActionError("Offers are already being held for a review.");
+      if (listing.signBackOut) throw new ActionError("You have a sign-back out. Wait for the answer before changing how offers are handled.");
+      const hold = Boolean(action.hold);
+      if (!hold && listing.decided) throw new ActionError("Your sellers have already decided to take offers any time.");
+      const review = nextReviewTime(n.simHours);
+      const offers = writtenOfferCount(s, n);
+      pushClient(n, { speaker: "user", text: text || (hold ? `I recommend we hold offers and review them all together on ${simTime(s, review)}.${offers ? ` Every agent with an offer will be told, and their offers registered.` : ""}` : "I recommend we take offers as they come in."), kind: "direction" });
+      const { text: reply } = await clientVoice(s, n, "[Your agent recommends how to handle offers]", holdDraft(s, n, hold));
+      pushClient(n, { speaker: "client", text: reply, kind: "direction" });
+      pushClient(n, { speaker: "system", text: `${names} signed a written decision: ${hold ? `hold offers until ${simTime(s, review)}` : "take offers any time"}.`, kind: "direction" });
+      listing.decided = true;
+      if (hold) {
+        holdOffers(s, n, review);
+        pushMessage(n, { speaker: "system", text: `Your sellers are holding offers until ${simTime(s, review)}. Every agent with an offer has been told, and their offers are registered for the review.` });
+      }
       return;
     }
 
@@ -221,11 +243,18 @@ function priceGap(s: Scenario, n: Negotiation, terms: Terms): number {
   return userSide(s) === "buyer" ? net - (s.buyer.reservationPrice + room) : s.seller.reservationPrice - room - net;
 }
 
-function presentOffers(s: Scenario, n: Negotiation, offerId: string | undefined): PresentAssessment {
+function presentOffers(s: Scenario, n: Negotiation, offerId: string | undefined, competitorId?: string): PresentAssessment {
   const c = clientOf(n);
   const state = n.offerNight;
   let items: { id: string; label: string; terms: Terms }[];
-  if (!offerId) {
+  if (competitorId) {
+    const other = allCompetitors(n).find((x) => x.id === competitorId && x.status === "registered" && x.registeredAt <= n.simHours);
+    if (!other) throw new ActionError("That offer isn't open.");
+    const key = `competitor:${other.id}`;
+    if (c.presented.includes(key)) throw new ActionError("You've already presented that offer.");
+    c.presented.push(key);
+    items = [{ id: key, label: other.label, terms: other.terms }];
+  } else if (!offerId) {
     if (userSide(s) !== "seller" || !state || (state.phase !== "review" && state.phase !== "final_review")) throw new ActionError("Choose an offer to present.");
     const theirs = theirLatestOffer(s, n);
     items = [...(theirs ? [{ id: theirs.id, label: "offer", terms: theirs.terms }] : []), ...registeredCompetitors(state, n.simHours).map((x) => ({ id: `competitor:${x.id}`, label: x.label, terms: x.terms }))];

@@ -10,6 +10,7 @@ import { OfferNightPanel } from "./OfferNightPanel";
 import { ClientPanel } from "./ClientPanel";
 import { ClientReviewCard } from "./ClientReviewCard";
 import { FirstDealChecklist } from "./FirstDealChecklist";
+import { ListingPanel } from "./ListingPanel";
 import { mySide, openOfferFrom, simClock, startingTerms } from "./negotiationUtils";
 
 interface Props {
@@ -216,6 +217,8 @@ export function Negotiation({ view, negotiation, onChange, showChecklist = false
           onDismiss={() => setReviewing(null)}
         />
       )}
+
+      {negotiation?.listing && !(negotiation.offerNight && negotiation.offerNight.phase !== "done") && <ListingPanel view={view} negotiation={negotiation} onChange={onChange} />}
 
       {negotiation?.transaction ? (
         <TransactionPanel view={view} tx={negotiation.transaction} negotiation={negotiation} onChange={onChange} />

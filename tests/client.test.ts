@@ -206,7 +206,11 @@ describe("client conversation", () => {
     const s = scenario("seller_agent", 1, (x) => x.offerNight?.sellerDisclosure === "details");
     const n = withClient(s);
     await startNegotiation(s, n, offlinePlayer);
-    expect(n.messages.some((m) => /Ask your sellers for their written direction/.test(m.text))).toBe(true);
+    // The listing side doesn't start as an offer night: the sellers decide, here to hold offers.
+    expect(n.offerNight ?? null).toBeNull();
+    expect(n.messages.some((m) => /Agree with your sellers how offers will be handled/.test(m.text))).toBe(true);
+    await act(s, n, { type: "client_hold", hold: true });
+    expect(n.offerNight!.phase).toBe("registration");
     expect(await refused(s, n, { type: "set_disclosure", disclosure: "details" })).toMatch(/written direction/);
     await act(s, n, { type: "client_direction" });
     expect(n.client!.direction).toBe("details");

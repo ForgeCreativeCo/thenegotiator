@@ -5,6 +5,7 @@ import type { Scenario } from "../engine/types";
 import { money } from "../narrative/format";
 import type { Negotiation, NegotiationMessage } from "../negotiation/types";
 import { unpresentedTxProposals } from "../client/transaction";
+import { allCompetitors } from "../negotiation/listing";
 
 export interface ComplianceFlag {
   rule: "confidentiality" | "misrepresentation" | "disclosure_direction" | "client_instructions" | "legal_advice" | "count_rule" | "client_duty";
@@ -53,6 +54,7 @@ function quote(m: { text: string }): string {
 
 /** How many competing offers the user's side actually had at a point in time. */
 function competingCountAt(n: Negotiation, at: number): number {
+  if (n.listing) return allCompetitors(n).filter((c) => c.registeredAt <= at).length;
   if (n.offerNight) return n.offerNight.competitors.filter((c) => c.registeredAt <= at).length;
   return n.messages.filter((m) => m.event === "competing_offer" && m.at <= at).length;
 }
@@ -83,8 +85,9 @@ export function reviewCompliance(s: Scenario, n: Negotiation): ComplianceFlag[] 
       flags.push({ rule: "confidentiality", severity: "breach", title: "Disclosed your client's motivation", detail: "You shared why or how urgently your client needs to deal. That's confidential, and the other side will use it.", quote: quote(m), at: m.at });
     }
     // Offer contents shared without the seller's direction.
-    if (s.userRole === "seller_agent" && n.offerNight && n.offerNight.disclosure !== "details") {
-      const leaked = n.offerNight.competitors.find((c) => c.registeredAt <= m.at && amounts.some((a) => near(a, c.terms.price, 0.003)));
+    const disclosedContents = n.listing ? n.listing.disclosure === "details" || n.offerNight?.disclosure === "details" : n.offerNight?.disclosure === "details";
+    if (s.userRole === "seller_agent" && (n.offerNight || n.listing) && !disclosedContents) {
+      const leaked = (n.listing ? allCompetitors(n) : n.offerNight!.competitors).find((c) => c.registeredAt <= m.at && amounts.some((a) => near(a, c.terms.price, 0.003)));
       if (leaked) flags.push({ rule: "confidentiality", severity: "breach", title: "Disclosed a competing offer's price", detail: `You shared ${leaked.label}'s price with another buyer's agent without your sellers' written direction. Without it, only the number of offers may be disclosed.`, quote: quote(m), at: m.at });
     }
     // Claims about competing offers that weren't true when made.
@@ -134,6 +137,16 @@ function clientDuty(s: Scenario, n: Negotiation): ComplianceFlag[] {
   }
   if (n.offerNight && s.userRole === "seller_agent" && n.status === "sold_to_other" && !c.presented.some((p) => p.startsWith("offer-night"))) {
     flags.push({ rule: "client_duty", severity: "breach", title: "Accepted a competing offer without presenting all the offers", detail: "On offer night, the listing agent presents every registered offer to the sellers before they choose.", quote: null, at: null });
+  }
+  // Competing offers on the listing side: every one that arrived must be presented to the sellers.
+  if (n.listing && s.userRole === "seller_agent") {
+    const arrived = allCompetitors(n).filter((x) => x.registeredAt <= n.simHours || x.status !== "registered");
+    const missed = arrived.filter((x) => !c.presented.includes(`competitor:${x.id}`));
+    if (missed.length) {
+      const lapsed = missed.some((x) => x.status === "expired" || x.status === "declined");
+      flags.push({ rule: "client_duty", severity: lapsed ? "breach" : "caution", title: `Didn't present ${missed.map((x) => x.label).join(", ")} to your sellers`, detail: "Every written offer goes to your sellers, whether or not you think it's competitive. Declining or letting an offer lapse is their decision, not yours.", quote: null, at: null });
+    }
+    if (n.listing.actedBeforeCount) flags.push({ rule: "count_rule", severity: "caution", title: "Acted on competing offers before telling every agent the count", detail: "With two or more written offers, every agent who made one must be told how many there are before you respond to any of them.", quote: null, at: null });
   }
   const txUnpresented = unpresentedTxProposals(s, n);
   if (txUnpresented) {

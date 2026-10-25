@@ -159,6 +159,14 @@ export const offerNightLines = {
     line(c, "night:send-back", ["We have {count}. My sellers are sending everyone back to improve. Best offers by {deadline}", "{count} came in. My sellers would like everyone to improve. Best and final by {deadline}", "We've got {count}. My sellers are giving everyone one chance to improve, by {deadline}"], { count, deadline }),
 };
 
+/** The opposing listing agent, when another buyer's offer arrives while you're negotiating. */
+export const listingLines = {
+  holdNow: (c: AgentContext, when: string, count: string) =>
+    line(c, "listing:hold-now", ["We've received {count}. My sellers will review all offers at {when}. Your offer is registered for the review, and you can improve it before then.", "Heads up: {count} came in. My sellers have decided to review everything together at {when}. Yours is registered; improve it if you want to.", "There's {count} now, so my sellers are holding offers until {when}. Your offer's registered. You can send an improved one before the review."], { when, count }),
+  soldElsewhere: (c: AgentContext) =>
+    line(c, "listing:sold-elsewhere", ["I'm sorry. Another offer came in and my sellers have accepted it. Thanks for your buyers' interest.", "Bad news, I'm afraid: my sellers accepted another buyer's offer. I'm sorry it didn't work out.", "My sellers have accepted another offer. I'm sorry; I know your buyers were keen."]),
+};
+
 // ---------- Answering the user ----------
 
 export type AgentTopic = "greeting" | "thanks" | "pushback" | "motivation" | "timing" | "price" | "comps" | "condition" | "offers" | "deposit" | "conditions" | "financing" | "inclusions";

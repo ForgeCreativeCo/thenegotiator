@@ -11,6 +11,7 @@ import type { Negotiation } from "../negotiation/types";
 import { hasClaudeCredentials } from "../scenarioService";
 import { complianceScore, reviewCompliance, type ComplianceFlag } from "./compliance";
 import { clientFacts } from "../client/facts";
+import { acceptedCompetitor, allCompetitors } from "../negotiation/listing";
 import type { UncoveredHow } from "../client/types";
 
 const MODEL = process.env.BOT_MODEL || "claude-opus-5-5";
@@ -56,8 +57,8 @@ function finalNet(s: Scenario, n: Negotiation): number | null {
     const base = netPrice(s, tx.terms) - tx.creditsOnClosing - tx.repairsAgreed;
     return base;
   }
-  if (n.status === "sold_to_other" && n.offerNight?.outcome?.competitorId) {
-    const c = n.offerNight.competitors.find((x) => x.id === n.offerNight!.outcome!.competitorId);
+  if (n.status === "sold_to_other") {
+    const c = acceptedCompetitor(n) ?? n.offerNight?.competitors.find((x) => x.id === n.offerNight?.outcome?.competitorId);
     return c ? netPrice(s, c.terms) : null;
   }
   return null;
@@ -65,12 +66,16 @@ function finalNet(s: Scenario, n: Negotiation): number | null {
 
 function outcomeOf(s: Scenario, n: Negotiation): Debrief["outcome"] {
   const tx = n.transaction;
+  if (n.status === "sold_to_other") {
+    const c = acceptedCompetitor(n) ?? n.offerNight?.competitors.find((x) => x.id === n.offerNight?.outcome?.competitorId);
+    const what = c ? `${c.label} at ${money(c.terms.price)}` : "a competing offer";
+    return { kind: "sold_to_other", label: "Sold to another buyer", summary: tx?.outcome ? `After the first agreement ended (${tx.outcome.reason.replace(/\.$/, "")}), your sellers sold to ${what}.` : `Your sellers accepted ${what}.` };
+  }
   if (tx?.outcome) {
     const labels = { completed: "Completed", void: "Null and void", terminated: "Terminated", buyer_default: "Buyer default", seller_default: "Seller default" };
     return { kind: tx.outcome.kind, label: labels[tx.outcome.kind], summary: tx.outcome.reason };
   }
-  if (n.status === "lost") return { kind: "lost", label: "Lost on offer night", summary: "Another buyer won the property." };
-  if (n.status === "sold_to_other") return { kind: "sold_to_other", label: "Sold to another buyer", summary: "Your sellers accepted a competing offer on offer night." };
+  if (n.status === "lost") return { kind: "lost", label: "Lost to another buyer", summary: "Another buyer won the property." };
   return { kind: "dead", label: n.endedBy === "user" ? "You walked away" : `${s.narrative.opposingAgent.name} walked away`, summary: "No agreement was reached." };
 }
 
@@ -180,6 +185,16 @@ function processNotes(s: Scenario, n: Negotiation): { good: boolean; text: strin
     if (missedRoom.length) notes.push({ good: false, text: `Your client had room you never found out about: ${missedRoom.map((f) => f.summary.replace(/\.$/, "")).join("; ")}.` });
     else if (missed.length) notes.push({ good: false, text: `Your client had ${missed.length} thing${missed.length === 1 ? "" : "s"} on their mind you never asked about.` });
   }
+  // Multiple offers on the listing side: how they were handled, and whether released buyers were brought back.
+  if (n.listing && side === "seller") {
+    const arrived = allCompetitors(n).filter((c) => c.registeredAt <= n.simHours || c.status !== "registered");
+    if (arrived.length) notes.push(n.listing.mode === "held" ? { good: true, text: "With competing buyers in play, you and your sellers held offers for a review, so everyone competed at once." } : { good: true, text: `You handled ${arrived.length === 1 ? "a competing offer" : `${arrived.length} competing offers`} as they came in.` });
+    const returned = n.listing.invites.filter((i) => i.result === "returned").length;
+    const collapsed = n.transaction?.status === "terminated" || n.status === "dead";
+    if (returned) notes.push({ good: true, text: `After the deal fell through, you brought back ${returned === 1 ? "a buyer" : `${returned} buyers`} who'd made offers.` });
+    else if (collapsed && arrived.some((c) => c.status === "released" || c.status === "expired" || c.status === "declined") && !n.listing.invites.length) notes.push({ good: false, text: "When the deal fell through, you didn't go back to the buyers who had made offers. They're your fastest path to a new agreement." });
+  }
+
   // Surprises from your own client after acceptance.
   for (const e of s.ownClientEvents ?? []) {
     const state = n.client?.events?.find((x) => x.id === e.id);

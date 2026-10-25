@@ -24,6 +24,6 @@ export function summarize(s: Scenario, n: Negotiation | null): ScenarioSummary {
     municipality: s.property.address.municipality,
     propertyType: s.property.type,
     listPrice: s.property.listPrice,
-    status: tx === "closed" || tx === "terminated" ? tx : (n?.status ?? "negotiating"),
+    status: n?.status === "sold_to_other" ? "sold_to_other" : tx === "closed" || tx === "terminated" ? tx : (n?.status ?? "negotiating"),
   };
 }

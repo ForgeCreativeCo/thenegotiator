@@ -35,7 +35,10 @@ export function ClientPanel({ view, negotiation, onChange }: Props) {
   const theirs = [...negotiation.offers].reverse().find((o) => o.by !== me && (o.status === "open" || o.status === "registered"));
   const canPresentOne = !inTransaction && active && theirs && !client.presented.includes(theirs.id) && !(night && me === "seller" && theirs.status === "registered");
   const canPresentAll = !inTransaction && active && night && me === "seller" && (night.phase === "review" || night.phase === "final_review") && !client.presented.includes(`offer-night:${night.phase}`);
-  const canAskDirection = !inTransaction && active && night && me === "seller" && !client.direction;
+  const listing = negotiation.listing;
+  const canAskDirection = !inTransaction && active && me === "seller" && !client.direction && Boolean(night || (listing && listing.writtenOffers >= 2));
+  // Competing offers that have arrived and haven't been shown to the sellers yet.
+  const competitorsToPresent = !inTransaction && (active || listing?.canRelist) && !night ? (listing?.competitors ?? []).filter((c) => c.status === "registered" && !client.presented.includes(`competitor:${c.id}`)) : [];
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -132,6 +135,11 @@ export function ClientPanel({ view, negotiation, onChange }: Props) {
             {toPresent.map((issue) => (
               <button key={issue.id} className="primary" disabled={busy} onClick={() => act({ type: "client_present", issueId: issue.id })}>
                 Present: {issue.title}
+              </button>
+            ))}
+            {competitorsToPresent.map((c) => (
+              <button key={c.id} className="primary" disabled={busy} onClick={() => act({ type: "client_present", competitorId: c.id })}>
+                Present {c.label} ({money(c.terms.price)})
               </button>
             ))}
             {canAskDirection && (

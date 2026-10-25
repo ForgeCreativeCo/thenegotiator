@@ -260,3 +260,28 @@ Without an API key, every word comes from dialogue pools in `server/dialogue/`. 
   - It never states its client's limit or private finances, never shares a vulnerable motivation (separation, financial strain), only cites a comp when it supports its side, and is truthful about competing offers.
   - After acceptance it answers from the deal's state: conditions, open issues, the appraisal, the mortgage, the deposit and completion.
 - **Your clients** (`client.ts`) speak in one of four personalities read from their story's quirks: anxious, analytical, emotional or blunt. They answer up to two topics per message, react to greetings, thanks, updates and "what do you think?", and word every review, presentation, direction and signature after acceptance in that personality.
+
+## 15. Multiple offers
+
+**One accepted agreement at a time, ever.** Unaccepted offers can stack up. Accepting one (even conditionally) releases every other buyer. Nothing lets two agreements exist at once.
+
+### Listing side (you represent the sellers)
+
+- **How offers are handled is the sellers' written decision**, on your recommendation: *any time*, or *hold offers until a review time* (an offer night). It can be made when the listing starts or later, including once a second offer arrives. Holding turns the listing into an offer night: every live offer is registered for the review, and the existing offer-night flow takes over.
+- **Competing buyers are real.** Each arrives as a written offer with its own terms, irrevocable time and hidden ceiling (code decides them). You present it to your sellers, and with their signature accept it, sign it back, decline it, or let it expire.
+- **Only one sign-back can be out at a time.** A competing buyer answers a sign-back a few hours later. Until then, no other sign-back or acceptance can go out; you can wait for the answer.
+- **Two or more written offers** bring the RECO rules in: you tell every agent with an offer the true count (one action covers all of them), and contents are shared only on the sellers' written direction.
+- **Accepting one offer releases the others**, and their agents are told the property is sold conditionally or firm. If the accepted deal collapses, you can invite released buyers back. Code decides who is still interested: stronger offers, released recently, come back with a fresh offer; others have moved on. A buyer who comes back is handled like any competing offer.
+- **The escape clause stays**: it's notice under the existing agreement, and the other offer stays unaccepted.
+
+### Buyer side (you represent a buyer)
+
+- The listing agent truthfully tells you how many offers there are.
+- When another buyer's offer arrives, the listing side may switch to holding offers until a review time (your current offer is registered for it), or accept the other buyer's offer if it's clearly better and signable. Then you've lost the property.
+
+### Scoring
+
+- Compliance: an arrived offer you never presented to your sellers; acting with two or more offers before telling the agents the count; offer contents shared without written direction.
+- Process notes: how offers were handled, and whether you invited buyers back after a collapse.
+
+Deals saved before this keep their old behaviour.

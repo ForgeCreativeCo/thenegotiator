@@ -16,7 +16,16 @@ export interface CompetitorOffer {
   /** The most this buyer would pay if pushed (hidden from everyone). */
   maxPrice: number;
   registeredAt: number;
-  status: "registered" | "accepted" | "released";
+  /**
+   * registered = a live written offer; accepted; released = told the property sold to someone else;
+   * declined = the sellers said no; expired = its irrevocable time ran out; withdrawn = the buyer walked
+   * (after a sign-back they wouldn't take); moved_on = invited back after a collapse but no longer interested.
+   */
+  status: "registered" | "accepted" | "released" | "declined" | "expired" | "withdrawn" | "moved_on";
+  /** When offers are taken any time: the end of the irrevocable time. */
+  expiresAt?: number;
+  /** When this buyer was told the property sold to someone else. */
+  releasedAt?: number;
 }
 
 export type OfferNightPhase = "registration" | "review" | "improvement" | "final_review" | "done";
@@ -52,22 +61,38 @@ function competitorTerms(s: Scenario, o: CompetingOffer, rng: Rng): Terms {
   });
 }
 
+/**
+ * The competing buyers from the scenario's hidden ground truth. For an offer night they register before the review;
+ * when offers are taken any time (reviewAt null) they arrive on their own schedule with a 12-hour irrevocable.
+ */
+export function buildCompetitors(s: Scenario, reviewAt: number | null): CompetitorOffer[] {
+  const rng = new Rng(s.seed ^ 0xb1d5);
+  const built = s.groundTruth.competingOffers
+    .filter((o) => o.phase === "pre_contract")
+    .map((o, i) => {
+      const terms = competitorTerms(s, o, rng);
+      const arrives = o.arrivesDay * 12 + 2;
+      const c: CompetitorOffer = {
+        id: `competitor-${i}`,
+        label: `Offer ${LABELS[i] ?? i + 2}`,
+        strength: o.strength,
+        terms: reviewAt === null ? { ...terms, irrevocableHours: 12 } : terms,
+        maxPrice: roundPrice(o.price * (1 + { weak: 0.01, comparable: 0.025, strong: 0.04 }[o.strength])),
+        registeredAt: reviewAt === null ? arrives : Math.min(arrives, reviewAt - 1),
+        status: "registered",
+      };
+      if (reviewAt === null) c.expiresAt = arrives + 12;
+      return c;
+    });
+  // Label them in the order they arrive: Offer B is the first competing offer.
+  [...built].sort((a, b) => a.registeredAt - b.registeredAt).forEach((c, i) => (c.label = `Offer ${LABELS[i] ?? i + 2}`));
+  return built;
+}
+
 export function initOfferNight(s: Scenario): OfferNightState | null {
   if (!s.offerNight) return null;
-  const rng = new Rng(s.seed ^ 0xb1d5);
   const reviewAt = s.offerNight.reviewAtHours;
-  const competitors = s.groundTruth.competingOffers
-    .filter((o) => o.phase === "pre_contract")
-    .map((o, i) => ({
-      id: `competitor-${i}`,
-      label: `Offer ${LABELS[i] ?? i + 2}`,
-      strength: o.strength,
-      terms: competitorTerms(s, o, rng),
-      maxPrice: roundPrice(o.price * (1 + { weak: 0.01, comparable: 0.025, strong: 0.04 }[o.strength])),
-      registeredAt: Math.min(o.arrivesDay * 12 + 2, reviewAt - 1),
-      status: "registered" as const,
-    }));
-  return { reviewAtHours: reviewAt, preemptives: s.offerNight.preemptives, disclosure: "count_only", phase: "registration", competitors, improvementDeadlineHours: null, countDisclosed: false, outcome: null };
+  return { reviewAtHours: reviewAt, preemptives: s.offerNight.preemptives, disclosure: "count_only", phase: "registration", competitors: buildCompetitors(s, reviewAt), improvementDeadlineHours: null, countDisclosed: false, outcome: null };
 }
 
 export function registeredCompetitors(state: OfferNightState, simHours: number): CompetitorOffer[] {
