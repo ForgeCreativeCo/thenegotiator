@@ -1,0 +1,19 @@
+{
+  "id": "/apps/the-negotiator-ontario",
+  "name": "The Negotiator",
+  "short_name": "Negotiator",
+  "description": "Practise Ontario residential real estate deals against a 30-year veteran agent, with RECO compliance scoring.",
+  "lang": "en-CA",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f5f2",
+  "theme_color": "#1f5f4a",
+  "categories": ["education", "business", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -38,6 +38,7 @@ Without an API key, scenarios still work, but their stories come from a plainer 
 | `npm test` | Runs the tests: scenario consistency and information leaks across 2,000 seeds, plus simulated negotiations and full contract-to-closing runs checking the agent never breaks its client's limits |
 | `npm run typecheck` | Type-checks everything |
 | `npm run generate -- --seed 123 [--offline]` | Prints one full scenario **including hidden layers**, for inspecting the generator |
+| `npx tsx server/scripts/makeIcons.ts` | Redraws the app icons in `client/public/icons` |
 | `npx tsx server/scripts/fuzzDeals.ts` | Plays hundreds of randomized deals on both sides and checks that nothing crashes, the other agent always answers, and there are never two accepted agreements |
 | `npx tsx server/scripts/simStats.ts` | Plays simulated users against the offline agent and prints close rates and outcomes, for tuning difficulty |
 
@@ -69,3 +70,7 @@ Each player's deals are kept under `players/<name>/deals/`. Production uses the 
 3. Under Project configuration → General → Visitor access → Project visibility, choose **Password** to share it with a group (one password for everyone), or **Private** for just your Netlify team. Without an API key the app runs offline and costs no Claude credits.
 
 Every push to `main` then redeploys.
+
+### Installing it as an app
+
+The site is an installable web app (`client/public/manifest.webmanifest`, service worker `client/public/sw.js`). Its manifest `id` is `/apps/the-negotiator-ontario`, so browsers treat it as its own app, separate from any other installed web app. In Chrome or Edge, use the install icon in the address bar (or the menu's **Install The Negotiator**). On iPhone, use Safari's **Share → Add to Home Screen**. Deals are never cached: the app always needs a connection to play.

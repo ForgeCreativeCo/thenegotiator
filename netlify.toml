@@ -5,3 +5,15 @@
 
 [build.environment]
   NODE_VERSION = "24"
+
+# Installable app: the service worker and manifest must never be served stale after a deploy.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "no-cache"
