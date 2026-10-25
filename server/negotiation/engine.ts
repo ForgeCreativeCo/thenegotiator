@@ -16,6 +16,12 @@ import { botBuyerBid, botBuyerTerms, competitorAccepts, disclosedSummary, improv
 import { hasClaudeCredentials } from "../scenarioService";
 import { createTransaction } from "../transaction/schedule";
 import { applyClientAction, clientViolations, isClientAction, requireSignature } from "../client/engine";
+import { agentSideAnswers, offerNightLines, type AgentContext } from "../dialogue/agent";
+
+/** The offline agent's dialogue context for engine-written lines, with this deal's used lines. */
+function agentCtx(s: Scenario, n: Negotiation): AgentContext {
+  return { s, used: (n.usedLines ??= []), seed: s.seed + n.messages.length * 31 };
+}
 
 function acceptedTerms(n: Negotiation): Terms {
   return n.offers.find((o) => o.id === n.acceptedOfferId)!.terms;
@@ -54,13 +60,13 @@ export const defaultBotPlayer: BotPlayer = async (s, rec, ctx, history, round) =
       return { ...turn, source: "claude" };
     } catch (error) {
       console.warn(`Claude bot turn failed, using offline agent: ${(error as Error).message}`);
-      const turn = offlineTurn(s, rec, ctx.userTerms, round, ctx.clientUpdate);
+      const turn = offlineTurn(s, rec, ctx.userTerms, round, ctx.clientUpdate, { userText: ctx.userText, used: ctx.usedLines, competing: ctx.competingOffers });
       // Keep the Claude conversation append-only and alternating.
       history.push({ role: "assistant", content: JSON.stringify({ action: turn.action, terms: turn.terms, message: turn.message }) });
       return { ...turn, source: "offline", issues: [(error as Error).message] };
     }
   }
-  return { ...offlineTurn(s, rec, ctx.userTerms, round, ctx.clientUpdate), source: "offline", issues: [] };
+  return { ...offlineTurn(s, rec, ctx.userTerms, round, ctx.clientUpdate, { userText: ctx.userText, used: ctx.usedLines, competing: ctx.competingOffers }), source: "offline", issues: [] };
 };
 
 export function userSide(s: Scenario): Side {
@@ -186,7 +192,7 @@ async function runBotTurn(s: Scenario, n: Negotiation, input: Pick<TurnContext, 
 
   const rec = recommend(s, n);
   const competingOffers = side === "seller" ? n.announcedEvents.filter((e) => e.startsWith("competing-")).length : null;
-  const ctx: TurnContext = { ...input, simTime: simTime(s, n.simHours), newEvents, clientUpdate, competingOffers };
+  const ctx: TurnContext = { ...input, simTime: simTime(s, n.simHours), newEvents, clientUpdate, competingOffers, usedLines: (n.usedLines ??= []) };
   const turn = await player(s, rec, ctx, n.llmHistory, round);
   const userOffer = lastOpenOffer(n, userSide(s));
 
@@ -275,7 +281,7 @@ async function startOfferNight(s: Scenario, n: Negotiation, state: OfferNightSta
     const terms = botBuyerTerms(s, roundBid(Math.min(s.buyer.reservationPrice * 0.98, s.property.listPrice * 1.08)), 4);
     const offer: Offer = { id: randomUUID(), by: "buyer", terms, status: "open", at: n.simHours, preemptive: true };
     n.offers.push(offer);
-    pushMessage(n, { speaker: "bot", text: `I know you're holding offers, but my buyers don't want to wait. Here's a pre-emptive offer at ${money(terms.price)}, ${terms.conditions.length ? "with short conditions" : "firm"}, ${money(terms.deposit)} deposit herewith, irrevocable for 4 hours.`, action: "offer", offerId: offer.id });
+    pushMessage(n, { speaker: "bot", text: offerNightLines.bully(agentCtx(s, n), money(terms.price), terms.conditions.length ? "with short conditions" : "firm", money(terms.deposit)), action: "offer", offerId: offer.id });
   } else {
     registerBotBid(s, n, 1, null, state.competitors.length);
   }
@@ -287,7 +293,7 @@ function registerBotBid(s: Scenario, n: Negotiation, round: 1 | 2, topKnown: num
   if (previous) previous.status = "expired";
   const offer: Offer = { id: randomUUID(), by: "buyer", terms: botBuyerTerms(s, price, 3), status: "registered", at: n.simHours, preemptive: false };
   n.offers.push(offer);
-  pushMessage(n, { speaker: "bot", text: round === 1 ? "Our offer is registered with your brokerage for offer night." : "Here's our improved offer. That's our best.", action: "offer", offerId: offer.id });
+  pushMessage(n, { speaker: "bot", text: round === 1 ? offerNightLines.register(agentCtx(s, n)) : offerNightLines.improve(agentCtx(s, n)), action: "offer", offerId: offer.id });
   return offer;
 }
 
@@ -311,7 +317,7 @@ async function sellerReviews(s: Scenario, n: Negotiation, state: OfferNightState
     state.countDisclosed = true;
     state.disclosure = s.offerNight?.sellerDisclosure ?? "count_only";
     const details = state.disclosure === "details" ? ` On my sellers' direction, here are the competing offers: ${disclosedSummary(state)}.` : "";
-    pushMessage(n, { speaker: "bot", text: `We have ${plural(ranked.length, "offer")}${mine ? ", including yours" : ""}. My sellers are sending everyone back to improve. Best offers by ${dot(simTime(s, state.improvementDeadlineHours))}${details}`, action: "message" });
+    pushMessage(n, { speaker: "bot", text: `${offerNightLines.sendBack(agentCtx(s, n), `${plural(ranked.length, "offer")}${mine ? ", including yours" : ""}`, dot(simTime(s, state.improvementDeadlineHours)))}${details}`, action: "message" });
     return;
   }
   state.phase = "done";
@@ -320,7 +326,7 @@ async function sellerReviews(s: Scenario, n: Negotiation, state: OfferNightState
     releaseCompetitors(state);
     if (decision.kind === "accept") {
       state.outcome = { kind: "user_offer_accepted" };
-      pushMessage(n, { speaker: "bot", text: `Congratulations: out of ${plural(ranked.length, "offer")}, my sellers have accepted yours.`, action: "accept", offerId: mine.id });
+      pushMessage(n, { speaker: "bot", text: offerNightLines.wonIt(agentCtx(s, n), plural(ranked.length, "offer")), action: "accept", offerId: mine.id });
       enterContract(s, n, mine, "bot");
     } else {
       state.outcome = { kind: "continued_with_sign_back" };
@@ -346,7 +352,7 @@ async function sellerReviews(s: Scenario, n: Negotiation, state: OfferNightState
   if (mine) mine.status = "rejected";
   n.status = "lost";
   n.endedBy = "bot";
-  pushMessage(n, { speaker: "bot", text: mine ? `Thanks for competing. Out of ${plural(ranked.length, "offer")}, my sellers have accepted another one. I'm sorry it wasn't your buyers this time.` : "My sellers accepted one of the registered offers. Your buyers didn't have an offer in.", action: "walk" });
+  pushMessage(n, { speaker: "bot", text: mine ? offerNightLines.lostIt(agentCtx(s, n), plural(ranked.length, "offer")) : "My sellers accepted one of the registered offers. Your buyers didn't have an offer in.", action: "walk" });
   pushMessage(n, { speaker: "system", text: "Another buyer won the property.", event: "walk" });
 }
 
@@ -386,7 +392,8 @@ async function buyerOfferNightAction(s: Scenario, n: Negotiation, state: OfferNi
       n.simHours += 1;
       state.countDisclosed = true;
       const where = state.phase === "improvement" ? `Improved offers are due by ${simTime(s, state.improvementDeadlineHours!)}` : `We're holding offers until ${simTime(s, state.reviewAtHours)}`;
-      pushMessage(n, { speaker: "bot", text: `${dot(where)} Right now there ${count === 1 ? "is" : "are"} ${plural(count, "other registered offer")}. Get your best in.`, action: "hold" });
+      const answers = agentSideAnswers(agentCtx(s, n), text, { currentPrice: s.property.listPrice, currentNet: s.property.listPrice, reservationNet: s.seller.reservationPrice, competing: count });
+      pushMessage(n, { speaker: "bot", text: `${answers ? `${answers} ` : ""}${offerNightLines.listingStatus(agentCtx(s, n), dot(where), `there ${count === 1 ? "is" : "are"} ${plural(count, "other registered offer")}`)}`, action: "hold" });
       return;
     }
     case "offer": {
@@ -454,7 +461,8 @@ async function sellerOfferNightAction(s: Scenario, n: Negotiation, state: OfferN
       pushMessage(n, { speaker: "user", text, action: "message" });
       n.simHours += 1;
       if (/\b(\d+|one|two|three|four|five|six|seven|no)\b[^.]*\boffers?\b/i.test(text)) state.countDisclosed = true;
-      pushMessage(n, { speaker: "bot", text: state.countDisclosed ? "Thanks, that's helpful. We'll be ready." : "Thanks. How many offers are registered right now?", action: "hold" });
+      const answers = agentSideAnswers(agentCtx(s, n), text, { currentPrice: s.property.listPrice, currentNet: s.property.listPrice, reservationNet: s.buyer.reservationPrice, competing: null });
+      pushMessage(n, { speaker: "bot", text: `${answers ? `${answers} ` : ""}${offerNightLines.buyerAgentAck(agentCtx(s, n), state.countDisclosed)}`, action: "hold" });
       return;
     }
     case "set_disclosure": {

@@ -75,6 +75,8 @@ export interface ClientState {
   direction: "count_only" | "details" | null;
   /** Private to the server: the client's Claude conversation, append-only. */
   llmHistory: Anthropic.Beta.BetaMessageParam[];
+  /** Offline dialogue lines the client has used in this deal, so they don't repeat themselves. */
+  usedLines?: string[];
   /** Surprises that have happened (absent until the first one). */
   events?: { id: string; status: "active" | "settled"; at: number }[];
 }

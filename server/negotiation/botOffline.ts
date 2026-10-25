@@ -1,11 +1,12 @@
 // Template-driven opposing agent, used when no API key is configured or a Claude turn fails validation.
+// The moves come from the strategy; the words come from the dialogue pools (server/dialogue/agent.ts).
 
 import type { Scenario } from "../engine/types";
-import { Rng } from "../engine/rng";
-import { money } from "../narrative/format";
 import { describeTerms, type Terms } from "./terms";
-import { botSide, type Recommendation } from "./strategy";
+import { money } from "../narrative/format";
+import type { Recommendation } from "./strategy";
 import type { BotAction } from "./types";
+import { agentLines, agentReply, agentSideAnswers, type AgentContext } from "../dialogue/agent";
 
 export interface BotTurn {
   action: BotAction;
@@ -14,8 +15,11 @@ export interface BotTurn {
   internalNote: string;
 }
 
-function clients(s: Scenario): string {
-  return botSide(s) === "seller" ? "my sellers" : "my buyers";
+/** Optional context for richer replies: what the user wrote, lines already used this deal, and real competing offers. */
+export interface OfflineExtras {
+  userText?: string;
+  used?: string[];
+  competing?: number | null;
 }
 
 function changes(before: Terms | null, after: Terms, s: Scenario): string[] {
@@ -26,58 +30,36 @@ function changes(before: Terms | null, after: Terms, s: Scenario): string[] {
     .map((line) => `${line.label.toLowerCase()}: ${line.value}`);
 }
 
-export function offlineTurn(s: Scenario, rec: Recommendation, userTerms: Terms | null, round: number, clientUpdate: string | null): BotTurn {
-  const rng = new Rng(s.seed + round * 7919);
-  const who = clients(s);
-  const temperament = s.difficulty.temperament;
-  const opener = {
-    collaborative: ["Thanks for sending this over.", "Appreciate you working with us on this.", "Thanks, I think we're getting somewhere."],
-    professional: ["Thanks for the offer.", "Received, thank you.", "Thanks. I reviewed this with " + who + "."],
-    cagey: ["Got it.", "Thanks. Interesting.", "I took a look."],
-    hardball: ["Look,", "I'll be straight with you.", "Let's not waste each other's time."],
-  }[temperament];
+export function offlineTurn(s: Scenario, rec: Recommendation, userTerms: Terms | null, round: number, clientUpdate: string | null, extras: OfflineExtras = {}): BotTurn {
+  const c: AgentContext = { s, used: extras.used, seed: s.seed + round * 7919 };
   const update = clientUpdate ? ` One more thing: ${clientUpdate.charAt(0).toLowerCase()}${clientUpdate.slice(1)}` : "";
+  const note = rec.reasoning;
 
   switch (rec.action) {
     case "accept":
-      return {
-        action: "accept",
-        terms: null,
-        message: `${rng.pick(opener)} ${who.charAt(0).toUpperCase() + who.slice(1)} accept. I'll get the signed contract back to you within the hour. Congratulations, we have a deal.`,
-        internalNote: rec.reasoning,
-      };
+      return { action: "accept", terms: null, message: `${agentLines.opener(c)} ${agentLines.accept(c)}`, internalNote: note };
     case "walk":
-      return {
-        action: "walk",
-        terms: null,
-        message: `I don't think we're going to get there. ${who.charAt(0).toUpperCase() + who.slice(1)} have gone as far as they can. If anything changes on your side, give me a call.`,
-        internalNote: rec.reasoning,
-      };
+      return { action: "walk", terms: null, message: agentLines.walk(c), internalNote: note };
     case "reject":
-      return {
-        action: "reject",
-        terms: null,
-        message: `${rng.pick(opener)} ${who.charAt(0).toUpperCase() + who.slice(1)} aren't going to respond to that number. Come back with something closer to the comps and we can talk.`,
-        internalNote: rec.reasoning,
-      };
-    case "hold":
-      return {
-        action: "hold",
-        terms: null,
-        message: `Happy to talk it through. Where we are right now is ${money(rec.currentPrice)}. Send me something in writing and I'll present it right away.${update}`,
-        internalNote: rec.reasoning,
-      };
+      return { action: "reject", terms: null, message: `${agentLines.opener(c)} ${agentLines.reject(c)}`, internalNote: note };
+    case "hold": {
+      const text = extras.userText?.trim();
+      const reply = text
+        ? agentReply(c, text, { currentPrice: rec.currentPrice, currentNet: rec.currentNet, reservationNet: rec.reservationNet, competing: extras.competing ?? null })
+        : agentLines.holdTail(c, rec.currentPrice);
+      return { action: "hold", terms: null, message: `${reply}${update}`, internalNote: note };
+    }
     case "counter": {
       const t = rec.terms!;
       const changed = changes(userTerms, t, s);
-      const why = botSide(s) === "seller"
-        ? rng.pick(["The comps support it.", "We've had good activity on this one.", "It's priced right for the condition."])
-        : rng.pick(["That's where the comps put it.", "My buyers are being realistic about the work this needs.", "That's a strong offer in this market."]);
+      const lead = userTerms ? `${agentLines.opener(c)} ${agentLines.counterLead(c, t.price)}` : `${agentLines.firstOffer(c)} ${money(t.price)}.`;
+      const answer = extras.userText?.trim() ? agentSideAnswers(c, extras.userText, { currentPrice: t.price, currentNet: rec.currentNet, reservationNet: rec.reservationNet, competing: extras.competing ?? null }) : "";
+      const extra = answer ? ` ${answer}` : "";
       return {
         action: "counter",
         terms: t,
-        message: `${userTerms ? `${rng.pick(opener)} We're countering at` : `Hi, it's ${s.narrative.opposingAgent.name.split(" ")[0]}. Sending over an offer from ${who}:`} ${money(t.price)}. ${why}${changed.length ? ` We also need to adjust ${changed.join("; ")}.` : ""}${update}`,
-        internalNote: rec.reasoning,
+        message: `${lead} ${agentLines.counterReason(c, t.price)}${changed.length ? ` ${agentLines.changes(c, changed.join("; "))}` : ""}${extra}${update}`,
+        internalNote: note,
       };
     }
   }

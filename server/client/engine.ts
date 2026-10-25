@@ -114,7 +114,7 @@ export function requireSignature(s: Scenario, n: Negotiation, action: UserAction
 const TOPIC_WORDS: [Topic, RegExp][] = [
   ["competition", /\b(other offers?|competing|bidding war|multiple offers|competition|offer night|other buyers|bully)\b/i],
   ["price", /\b(price|pay|budget|afford|stretch|higher|lower|how (high|low|much)|less|more money|bottom line|limit|max(imum)?|number)\b/i],
-  ["timing", /\b(clos(e|ing)|completion|complete|move|moving|date|when|timeline|lease|possession|soon|time|month|week)\b/i],
+  ["timing", /\b(clos(e|ing)|completion|complete|move|moving|date|when|timeline|lease|possession|soon|time|timing|month|week)\b/i],
   ["deposit", /\b(deposit|cheque|certified|bank draft|down ?payment funds)\b/i],
   ["inspection", /\b(inspect(ion|or)?|furnace|roof|basement|foundation|repairs?|needs work|old house)\b/i],
   ["conditions", /\b(conditions?|firm|waive|waiving|conditional)\b/i],
@@ -161,7 +161,7 @@ export async function applyClientAction(s: Scenario, n: Negotiation, action: Use
       const topics = topicsIn(text);
       const fact = factFor(s, n, topics);
       if (fact) uncover(n, fact, "asked");
-      const draft = chatDraft(s, text, topics, fact, competitionKnown(s, n));
+      const draft = chatDraft(s, n, text, topics, fact, competitionKnown(s, n));
       const { text: reply } = await clientVoice(s, n, `[Your agent says] "${text}"`, draft);
       pushClient(n, { speaker: "client", text: reply, kind: "chat", factId: fact?.id });
       return;
@@ -176,7 +176,7 @@ export async function applyClientAction(s: Scenario, n: Negotiation, action: Use
       const verdict = problems.length ? "refused" : nearLimit(s, n, doc.terms) ? "reluctant" : "signed";
       c.signature = verdict === "refused" ? null : { key: doc.key, at: n.simHours };
       pushClient(n, { speaker: "user", text: text || `Here's the ${doc.label} at ${money(doc.terms.price)} for you to review.`, kind: "review" });
-      const draft = reviewDraft(s, { verdict, document: doc.label, problems, requirements });
+      const draft = reviewDraft(s, n, { verdict, document: doc.label, problems, requirements });
       const { text: reply } = await clientVoice(s, n, `[Your agent asks you to review and sign the ${doc.label}] Price ${money(doc.terms.price)}. ${verdict === "refused" ? `You refuse: ${problems.join("; ")}.` : verdict === "reluctant" ? "You sign, reluctantly." : "You sign."}`, draft);
       pushClient(n, { speaker: "client", text: reply, kind: "review", verdict, details: problems, factId: requirements.find((r) => r.isNew)?.fact.id });
       return;
@@ -185,7 +185,7 @@ export async function applyClientAction(s: Scenario, n: Negotiation, action: Use
     case "client_present": {
       const assessment = presentOffers(s, n, action.offerId);
       pushClient(n, { speaker: "user", text: text || (assessment.count && assessment.count > 1 ? `The registered offers are in. Let's go through all ${assessment.count}.` : `${s.narrative.opposingAgent.name}'s ${assessment.label} came in at ${money(assessment.price)}. Here it is.`), kind: "present", offerId: action.offerId });
-      const draft = presentDraft(s, assessment);
+      const draft = presentDraft(s, n, assessment);
       const { text: reply } = await clientVoice(s, n, `[Your agent presents the other side's ${assessment.label}] Price ${money(assessment.price)}.`, draft);
       pushClient(n, { speaker: "client", text: reply, kind: "present", offerId: action.offerId, factId: assessment.missing.find((m) => m.isNew)?.fact.id });
       return;
@@ -196,7 +196,7 @@ export async function applyClientAction(s: Scenario, n: Negotiation, action: Use
       if (c.direction) throw new ActionError(`Your sellers have already given you their direction.`);
       c.direction = s.offerNight?.sellerDisclosure ?? "count_only";
       pushClient(n, { speaker: "user", text: text || "Other buyers' agents may ask about the competing offers. How much do you want me to disclose? I'll need your direction in writing.", kind: "direction" });
-      const { text: reply } = await clientVoice(s, n, "[Your agent asks for your written direction on disclosing competing offers]", directionDraft(s, c.direction));
+      const { text: reply } = await clientVoice(s, n, "[Your agent asks for your written direction on disclosing competing offers]", directionDraft(s, n, c.direction));
       pushClient(n, { speaker: "client", text: reply, kind: "direction" });
       pushClient(n, { speaker: "system", text: `${names} signed a written direction: ${c.direction === "details" ? "disclose the contents of competing offers" : "disclose the number of offers only"}.`, kind: "direction" });
       return;

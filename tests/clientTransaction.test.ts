@@ -90,7 +90,7 @@ describe("client signatures after acceptance", () => {
     const key = n.transaction!.conditions[0].key;
     await act(s, n, { type: "client_review", pending: { type: "release", key } });
     expect(lastClient(n).verdict).toBe("refused");
-    expect(lastClient(n).text).toMatch(/still want/);
+    expect(lastClient(n).details).toContain("Your client doesn't want to end the deal.");
     expect(await refused(s, n, { type: "release", key })).toMatch(/haven't signed/);
   });
 

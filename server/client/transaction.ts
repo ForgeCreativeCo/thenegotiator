@@ -10,7 +10,8 @@ import type { Issue, Proposal, Transaction } from "../transaction/types";
 import type { TxAction } from "../transaction/engine";
 import { clientFacts } from "./facts";
 import { clientOf, pushClient, topicsIn, uncover } from "./engine";
-import { chatDraft, clientVoice } from "./voice";
+import { chatDraft, clientCtx, clientVoice } from "./voice";
+import { clientTxLines } from "../dialogue/client";
 import type { OwnClientEvent } from "./types";
 
 const SIGNED_ACTIONS = ["condition", "release", "request_condition_extension", "request_date_change", "propose", "accept"] as const;
@@ -115,7 +116,7 @@ function unresolvedSeriousFindings(s: Scenario, tx: Transaction): boolean {
 
 async function decide(s: Scenario, n: Negotiation, tx: Transaction, action: TxAction): Promise<TxReview> {
   const me = userSide(s);
-  const we = /\band\b|&/i.test(((me === "buyer" ? s.narrative.buyerStory : s.narrative.sellerStory).clientNames)) ? "We" : "I";
+  const cc = clientCtx(s, n);
   const goingFirm = action.type === "condition" && tx.conditions.filter((c) => c.status === "pending").length === 1;
 
   // A surprise that blocks this signature starts now, or is still waiting for the agent to talk it through.
@@ -129,24 +130,24 @@ async function decide(s: Scenario, n: Negotiation, tx: Transaction, action: TxAc
 
   if (action.type === "release") {
     const remorse = eventState(n, "remorse");
-    if (!hasReasonToEnd(s, tx) && !remorse) return { verdict: "refused", reasons: ["Your client doesn't want to end the deal."], draft: `Why would we walk away? ${we === "We" ? "We" : "I"} still want this ${me === "buyer" ? "house" : "sale"}.` };
-    return { verdict: "signed", reasons: [], draft: `Okay. If that's the right call, ${we === "We" ? "we'll" : "I'll"} sign the release.` };
+    if (!hasReasonToEnd(s, tx) && !remorse) return { verdict: "refused", reasons: ["Your client doesn't want to end the deal."], draft: clientTxLines.releaseRefuse(cc, me === "buyer" ? "house" : "sale") };
+    return { verdict: "signed", reasons: [], draft: clientTxLines.releaseSign(cc) };
   }
 
   if (action.type === "condition") {
-    if (action.how === "fulfil") return { verdict: "signed", reasons: [], draft: "Signed. One step closer." };
+    if (action.how === "fulfil") return { verdict: "signed", reasons: [], draft: goingFirm ? clientTxLines.firm(cc) : clientTxLines.fulfil(cc) };
     if (action.key === "financing" && tx.loanStatus !== "approved") {
-      return { verdict: "reluctant", reasons: [], draft: `${we === "We" ? "We'll" : "I'll"} sign, but the lender hasn't confirmed anything yet. If the mortgage falls through after this, ${we === "We" ? "we" : "I"} lose the deposit, right? You're sure about this?` };
+      return { verdict: "reluctant", reasons: [], draft: clientTxLines.financingReluctant(cc) };
     }
     if (action.key === "inspection" && unresolvedSeriousFindings(s, tx)) {
       const nervous = clientFacts(s).find((f) => f.id === "context-inspection");
       if (nervous) {
         const isNew = uncover(n, nervous, "refusal");
-        return { verdict: "refused", reasons: ["Your client won't waive with serious findings unresolved."], draft: `${isNew ? `${nervous.says} ` : ""}${we} won't waive the inspection until those findings are dealt with.` };
+        return { verdict: "refused", reasons: ["Your client won't waive with serious findings unresolved."], draft: `${isNew ? `${nervous.says} ` : ""}${clientTxLines.inspectionRefuse(cc)}` };
       }
-      return { verdict: "reluctant", reasons: [], draft: `Those findings worry ${we === "We" ? "us" : "me"}. ${we === "We" ? "We'll" : "I'll"} sign, but this is on the record: we're taking them on ourselves.` };
+      return { verdict: "reluctant", reasons: [], draft: clientTxLines.inspectionWorried(cc) };
     }
-    return { verdict: "signed", reasons: [], draft: goingFirm ? "Signed. So that's it, we're firm!" : "Signed." };
+    return { verdict: "signed", reasons: [], draft: goingFirm ? clientTxLines.firm(cc) : clientTxLines.waived(cc) };
   }
 
   // Amendments: their limits after acceptance.
@@ -156,8 +157,8 @@ async function decide(s: Scenario, n: Negotiation, tx: Transaction, action: TxAc
   const closingDate = action.type === "request_date_change" ? action.closingDate : action.type === "propose" ? (action.closingDate ?? null) : (theirs?.closingDate ?? null);
   const kind = issue ?? { kind: action.type === "request_date_change" ? ("date_change" as const) : ("condition_extension" as const), id: "new" };
   const objections = userClientObjections(s, tx, kind, me, issue && !isMoneyIssue(issue) && issue.kind !== "condition_extension" ? 0 : amount, closingDate);
-  if (objections.length) return { verdict: "refused", reasons: objections, draft: `${we} can't sign that. ${objections[0]}` };
-  return { verdict: "signed", reasons: [], draft: issue && isDateIssue(issue) ? "That date works. Signed." : "Okay, signed." };
+  if (objections.length) return { verdict: "refused", reasons: objections, draft: clientTxLines.amendmentRefused(cc, objections[0]) };
+  return { verdict: "signed", reasons: [], draft: clientTxLines.amendmentSigned(cc, Boolean(issue && isDateIssue(issue)) || action.type === "request_date_change") };
 }
 
 // ---------- Actions ----------
@@ -179,7 +180,7 @@ export async function applyTxClientAction(s: Scenario, n: Negotiation, action: T
         pushClient(n, { speaker: "client", text: reply, kind: "chat" });
         return;
       }
-      const { text: reply } = await clientVoice(s, n, `[Your agent says] "${text}"`, chatDraft(s, text, topicsIn(text), null, false));
+      const { text: reply } = await clientVoice(s, n, `[Your agent says] "${text}"`, chatDraft(s, n, text, topicsIn(text), null, false));
       pushClient(n, { speaker: "client", text: reply, kind: "chat" });
       return;
     }
@@ -206,7 +207,7 @@ export async function applyTxClientAction(s: Scenario, n: Negotiation, action: T
       c.presented.push(key);
       const what = isDateIssue(issue) ? `completion on ${displayDate(last.closingDate ?? tx.terms.completionDate)}` : issue.kind === "condition_extension" ? `${last.amount} more banking days` : isMoneyIssue(issue) ? money(last.amount) : issue.title.toLowerCase();
       pushClient(n, { speaker: "user", text: `${s.narrative.opposingAgent.name} sent ${last.kind === "request" ? "a request" : "a counter"} on ${issue.title.toLowerCase()}: ${what}.`, kind: "present" });
-      const { text } = await clientVoice(s, n, `[Your agent presents the other side's ${last.kind} on ${issue.title}] ${what}.`, presentIssueDraft(s, tx, issue, last));
+      const { text } = await clientVoice(s, n, `[Your agent presents the other side's ${last.kind} on ${issue.title}] ${what}.`, presentIssueDraft(s, n, tx, issue, last));
       pushClient(n, { speaker: "client", text, kind: "present" });
       return;
     }
@@ -222,17 +223,18 @@ function presentKey(tx: Transaction, issueId: string, presented: string[]): void
   if (last && !presented.includes(`issue:${issue.id}:${last.id}`)) presented.push(`issue:${issue.id}:${last.id}`);
 }
 
-function presentIssueDraft(s: Scenario, tx: Transaction, issue: Issue, p: Proposal): string {
+function presentIssueDraft(s: Scenario, n: Negotiation, tx: Transaction, issue: Issue, p: Proposal): string {
   const me = userSide(s);
+  const cc = clientCtx(s, n);
   const objections = userClientObjections(s, tx, issue, me, isMoneyIssue(issue) || issue.kind === "condition_extension" ? p.amount : 0, p.closingDate);
-  if (objections.length) return `No. ${objections[0]}`;
+  if (objections.length) return clientTxLines.presentNo(cc, objections[0]);
   if (isMoneyIssue(issue) && issue.reference > 0) {
     const share = p.amount / issue.reference;
-    if (me === "buyer") return share >= 0.6 ? `${money(p.amount)} is fair for what the inspector found.` : `${money(p.amount)}? That doesn't come close to covering what the inspector found. Can you push?`;
-    return share <= 0.6 ? `${money(p.amount)}, if it keeps the deal together.` : `${money(p.amount)} feels like a lot. Is that really what it's worth?`;
+    if (me === "buyer") return share >= 0.6 ? clientTxLines.presentFairBuyer(cc, money(p.amount)) : clientTxLines.presentLowBuyer(cc, money(p.amount));
+    return share <= 0.6 ? clientTxLines.presentOkSeller(cc, money(p.amount)) : clientTxLines.presentHighSeller(cc, money(p.amount));
   }
-  if (isDateIssue(issue)) return "That date works for us.";
-  return "Okay. What do you think we should do?";
+  if (isDateIssue(issue)) return clientTxLines.presentDate(cc);
+  return clientTxLines.presentOther(cc);
 }
 
 /** The other side's proposals the user answered without presenting them first. */

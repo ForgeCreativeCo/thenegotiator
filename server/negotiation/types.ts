@@ -67,6 +67,8 @@ export interface Negotiation {
   debriefCritique?: Critique;
   /** The conversation with the user's own client. Absent on deals saved before it existed. */
   client?: ClientState;
+  /** Offline dialogue lines the opposing agent has used in this deal, so it doesn't repeat itself. */
+  usedLines?: string[];
 }
 
 export interface RefusedAttempt {

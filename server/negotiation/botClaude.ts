@@ -99,6 +99,8 @@ export interface TurnContext {
   clientUpdate: string | null;
   /** Real competing written offers the listing side has received, or null when the bot is the buyer's agent and can't know. */
   competingOffers: number | null;
+  /** Offline dialogue lines already used in this deal, so they aren't repeated. */
+  usedLines?: string[];
 }
 
 function turnPrompt(s: Scenario, rec: Recommendation, ctx: TurnContext): string {

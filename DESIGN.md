@@ -249,3 +249,14 @@ What you ask is matched to topics (price, timing, deposit, conditions, inspectio
   - *Second thoughts after firm*: messages you unprompted, asking whether they can get out. Encouraging them to walk away from a firm deal is flagged; it means a lost deposit and a damages claim.
   - *A later date* (seller): messages you unprompted after acceptance, asking for a later completion.
   - Any reply to the client settles a blocking surprise. The debrief notes surprises you never answered.
+
+## 14. Offline dialogue
+
+Without an API key, every word comes from dialogue pools in `server/dialogue/`. Code still decides every move and number.
+
+- **No repeats**: each deal records the lines it has used, and a line isn't used again until its whole pool has been (`pick.ts`). The order is seeded, so a deal replays the same way.
+- **The opposing agent** (`agent.ts`, `transaction.ts`) words its moves in its hidden temperament (collaborative, professional, cagey, hardball) and answers what you ask: motivation, timing, price, comps, condition, other offers, deposit, conditions, financing, inclusions, plus greetings, thanks and pushback.
+  - What it shares follows its hidden *withholding* setting: open agents share their client's timing window and a hint of motivation and flexibility, reserved ones share less, guarded ones almost nothing.
+  - It never states its client's limit or private finances, never shares a vulnerable motivation (separation, financial strain), only cites a comp when it supports its side, and is truthful about competing offers.
+  - After acceptance it answers from the deal's state: conditions, open issues, the appraisal, the mortgage, the deposit and completion.
+- **Your clients** (`client.ts`) speak in one of four personalities read from their story's quirks: anxious, analytical, emotional or blunt. They answer up to two topics per message, react to greetings, thanks, updates and "what do you think?", and word every review, presentation, direction and signature after acceptance in that personality.

@@ -25,9 +25,10 @@ import {
   type BotMove,
 } from "./policy";
 import { cmhcPremiumRate, landTransferTax } from "./landTransferTax";
-import { draftMessage, voice } from "./voice";
+import { voice } from "./voice";
 import type { ConditionState, Issue, IssueKind, Outcome, Proposal, Report, ScheduledEvent, Settlement, Transaction, TransactionView } from "./types";
 import { transactionView } from "./types";
+import { agentTxDraft, agentTxReply } from "../dialogue/transaction";
 import { applyTxClientAction, requireTxSignature, txClientTriggers } from "../client/transaction";
 
 export type TxAction =
@@ -542,7 +543,7 @@ async function botActs(s: Scenario, n: Negotiation, tx: Transaction, speak: Voic
       continue;
     }
     const situation = `${issue.title}: ${issue.detail} Price ${money(tx.terms.price)}, completion ${displayDate(tx.terms.completionDate)}.`;
-    const text = await speak(s, n, situation, m.reasoning, draftMessage(s, issue, m));
+    const text = await speak(s, n, situation, m.reasoning, agentTxDraft({ s, used: (n.usedLines ??= []), seed: s.seed + tx.day * 131 + issue.proposals.length }, issue, m));
     setClock(s, n, tx, 14);
     pushMessage(n, { speaker: "bot", text, action: m.kind === "terminate" || m.kind === "withdraw" ? "walk" : m.kind === "accept" ? "accept" : m.kind === "reject" ? "reject" : "counter" });
     n.botTurns.push({ messageId: n.messages[n.messages.length - 1].id, source: "offline", internalNote: m.reasoning, recommended: "hold", validationIssues: [] });
@@ -630,7 +631,7 @@ export async function applyTxAction(s: Scenario, n: Negotiation, action: TxActio
       say(text);
       const open = tx.issues.filter((i) => i.status === "open").map((i) => i.title).join(", ") || "nothing open right now";
       const pending = tx.conditions.filter((c) => c.status === "pending").map((c) => c.label).join(", ") || "none";
-      const reply = await speak(s, n, `The other agent says: "${text}". Open items: ${open}. Conditions still pending: ${pending}.`, "Reply helpfully and briefly. Don't change any position or make new offers in this message.", "Thanks, noted. I'll keep you posted on our side.");
+      const reply = await speak(s, n, `The other agent says: "${text}". Open items: ${open}. Conditions still pending: ${pending}.`, "Reply helpfully and briefly. Don't change any position or make new offers in this message.", agentTxReply({ s, used: (n.usedLines ??= []), seed: s.seed + n.messages.length * 7 }, text, tx, s.difficulty.withholding));
       setClock(s, n, tx, 13);
       pushMessage(n, { speaker: "bot", text: reply, action: "hold" });
       return;
